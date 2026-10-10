@@ -107,3 +107,6 @@ docs/task/*分组*统计*.xlsx
 
 # 含组员学号，仅本地保存
 docs/task/*任务书_1组*
+
+# 由 tools/fw_prep/smoke.py 运行时生成
+tools/fw_prep/smoke_main.c

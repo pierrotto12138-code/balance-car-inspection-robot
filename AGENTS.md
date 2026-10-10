@@ -15,7 +15,7 @@
 | 原理图（板「改」） | ✅ 完工 —— 104 元件 / 52 位号 / 65 网络 / 全有封装与立创料号 / DRC 致命 0 |
 | PCB（板「改」） | ✅ 完工 —— 523 走线段 / 76 过孔 / **双面实心 GND 铺铜** / **DRC 零错误零未连接** |
 | 打样与采购 | 🔶 **已下单，等货**（当前阻塞点） |
-| 固件 B / 上位机界面 C | ⬜ 待推进（等货期间可并行） |
+| 固件 B / 上位机界面 C | 🔶 **B：P0~P5（离线部分）完成 + 复查/接口完善**（GCC 构建出 `.hex`；协议 117 + 传感器 1235 + 状态机 67 + 调参 24 条断言全过；四任务已跑起来、程序说明文档已出 → [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)）；C 待推进 |
 
 **⚠️ 现在不要动 EDA 工程**，除非用户明确要求。板子已下单，改动会引入版本混乱。
 
@@ -149,6 +149,16 @@ pwsh -NoProfile -File tools\eda_exec.ps1 -CodeFile tools\eda_pcb_overview.js
 | **22** | **座序必须对着实物丝印核，不能只信往届工程的网络表** —— 原板 `J3/J4` 的 pin2/pin5 与实物**是反的**，照它插电机会把编码器**反极烧毁**。 |
 | **23** | **验证自己的改动要用独立方法** —— 不要拿自己写的解析器去验自己的改动（它可能共享同一个错误假设）。最可靠：**看文件里的原始记录**，或**数焊盘个数**。 |
 
+### 3.4 固件 / RTOS 陷阱（B 阶段实际踩过，2026-10-09 补）
+
+| # | 陷阱 |
+|---|---|
+| **24** | **★ 高于 `configMAX_SYSCALL_INTERRUPT_PRIORITY` 的中断里绝不能调 FreeRTOS API**（含 `...FromISR`）——本项目的 `EXTI15_10`（优先级 1）与 `USART1/2`（优先级 0）都在阈值(5)之上。**编译器不报错、上板才炸**。做法：中断里只"塞字节进环形缓冲"，解帧交给任务；用 `tools/fw_prep/check_isr_safety.py` 做静态核验。 |
+| **25** | **★ 中断与任务不能共用同一个 ADC（外设）** —— 任务侧临界区**挡不住**高优先级中断：控制中断读电池时会重设 ADC1 通道，任务同时读就会互相打断（读到别的通道、EOC 标志被吃掉）。只能**物理分开**（本项目：ADC1 给中断算电池，ADC2 给任务测气体；PA5/PA6 恰好同时在 ADC12 上）。 |
+| **26** | **★ 改板换了引脚，要连"所有用到该脚的地方"一起改** —— 超声波 TRIG 从 PC2 改到 PC4，若只改 `GPIO_Init` 而漏了发脉冲的 `PCout(2)`，现象是"编译没问题、测距恒为 0"。**改完要全仓库搜一遍旧引脚**（`PCout(2)`/`PAout(4)`…）。 |
+| **27** | **★ 状态机与标定/初始化之间不要互相等待** —— "离开预热"要求"标定完成"，而"标定收尾"又写在"已离开预热"的分支里 = **死锁**（车永远进不了待机）。凡是"A 等 B、B 等 A"的流程，必须有一方是**单向收尾**（按次数或超时自行结束）。 |
+| **28** | **解析外部文件/向量时对"分节变化与空列"要防御** —— 向量文件加了新分节，解析器把中文名当十六进制 `stoul` 直接抛异常；行尾空列还会被 `std::getline` 丢掉。**证据链本身崩了，比没有证据更危险**：解析器要按"列内容"判别而非按行位置。 |
+
 ---
 
 ## 4. AI 的能力边界（本项目实测结论）
@@ -198,13 +208,35 @@ $s = ($out | Out-String).Trim() -replace '^data:image/png;base64,',''
 [System.IO.File]::WriteAllBytes("shot.png", [Convert]::FromBase64String($s))
 ```
 
+### 固件（B）—— 不需要 Keil
+
+```powershell
+cd D:\260921Task\firmware
+make                     # 默认带 FreeRTOS；产出 build/MiniBalance.hex（给 FlyMcu 烧）
+make USE_RTOS=0          # 纯裸机对照（怀疑 RTOS 影响时序时二分定位）
+make size                # Flash / RAM 占用
+
+# 离线核验（不需要板子）
+python ..\tools\fw_prep\run_all_tests.py          # ★★ 一键跑完下面全部并汇总（提交前必跑）
+python ..\tools\fw_prep\run_proto_test.py          # ★ 协议层原生单测（117 条断言，PC 上跑）
+python ..\tools\fw_prep\run_sensor_test.py        # ★ 传感器算法原生单测（1235 条断言）
+python ..\tools\fw_prep\run_patrol_test.py        # ★ 巡检状态机原生单测（67 条断言）
+python ..\tools\fw_prep\run_param_test.py         # ★ PID 参数打包原生单测（24 条断言）
+python ..\tools\fw_prep\check_vector_table.py     # ★ 向量表 + 关键中断归属（读 .map）
+python ..\tools\fw_prep\check_isr_safety.py       # ★ 中断安全：ISR 不得调用 FreeRTOS API（编译器不报，上板才炸）
+python ..\tools\fw_prep\pin_check.py              # ★ 引脚基线：从 PCB 的 PAD_NET 逐脚比对
+python ..\tools\fw_prep\gen_test_vectors.py       # 协议测试向量（B/C 共用，决策 36）
+```
+
 ---
 
 ## 6. 文档约定
 
 - **文档中文，工程目录英文。**
 - **改动前先看对应文档**：硬件 → `docs/design_hardware/`；协议 → `docs/protocol/`。
-- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 33）。
+- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 46）。
+- **固件（B）相关**：开工准备与核验记录在 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)；
+  本地构建 = `arm-none-eabi-gcc` + Makefile（**必须产出 `.hex`**，用 FlyMcu 串口 ISP 烧录），**不考虑 Keil 交付**（决策 34）。
 - **新读者入口**：[`docs/文档索引.md`](docs/文档索引.md)；**接手**：[`docs/handoff/交接说明.md`](docs/handoff/交接说明.md)。
 - **历史过程写进 `docs/archive/`**，正文只留结论。
 

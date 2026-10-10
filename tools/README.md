@@ -36,6 +36,29 @@ node scripts/bridge-server.mjs        # 端口 49620
 | `eda_fix_rrr2.js` | **参考实现**：删局部乱线 + 按目标网重建（含区域保护） | 同上 |
 | `extract_taskbook.py` | 从任务书 DOCX 抽纯文本 | 需要检索任务书条款时 |
 
+### 固件（B 阶段）脚本 —— `fw_prep/`
+
+> 除 `vendor_baseline.py --apply`（写 `firmware/`）外，其余**只读**；输出物在 `fw_prep/out/` 或 `firmware/build/`（均已 gitignore）。
+
+| 文件 | 用途 | 何时用 |
+|---|---|---|
+| `fw_prep/vendor_baseline.py` | 把厂商基线源码 vendor 进 `firmware/`：**GBK→UTF-8** + 目录映射 + 报告转码失败 | 重建/升级 `firmware/` 时（`--apply` 才写盘） |
+| `fw_prep/gen_startup.py` | **生成 GCC 启动文件**：从 `User/stm32f4xx.h` 的 **IRQn 枚举**取名，98 个向量，杜绝手抄中断名 | 换芯片/改 CMSIS 头后 |
+| `fw_prep/smoke.py` | 固件开工体检：① arm-gcc 构建最小 F405 镜像并出 hex；② 逐文件编译基线源码，列出"需改造"清单 | 换机器 / 换工具链后 |
+| `fw_prep/check_vector_table.py` | **★ 镜像核验**：栈顶/入口/`.isr_vector` 地址 + 关键中断（控制 ISR、USART2、TIM3/TIM8、SVC/PendSV/SysTick）逐条查**归属哪个 `.o`**（读 `.map`） | **每次 `make` 后** |
+| `fw_prep/check_isr_safety.py` | **★ 中断安全静态检查**：从 `.map` 取真正参与链接的 ISR → 定位源码函数体 → 搜索 FreeRTOS API 名单；并列出各中断抢占优先级与 syscall 阈值的关系 | **每次动中断或 RTOS 配置后**（这类错误编译器不报） |
+| `fw_prep/gen_test_vectors.py` | 生成协议**测试向量**（`docs/protocol/test_vectors.json/.tsv`：CRC 4 + 帧 12 + 流式 6），并检查协议文档声明的 N 与字段清单是否自洽 | 协议冻结前 / 改协议后 |
+| `fw_prep/run_proto_test.py` | **★ 固件协议层原生单元测试**：用本机 MinGW gcc 编译 `firmware/App/Comms/*` + `firmware/tests/proto_test.c` 并在 PC 上跑（117 条断言：向量复现 + 超时 + 边界 + 环形缓冲） | **每次改协议/解帧代码后** |
+| `fw_prep/gen_sensor_vectors.py` | 生成**传感器算法测试向量**（Python 独立实现 → `firmware/tests/sensor_vectors.csv`：GAS 280 / CALIB 2 / AVG 22 / CORR 7 / PARSE 9 / ALARM 5） | 改气体换算/补偿/标定/DHT11 后 |
+| `fw_prep/run_sensor_test.py` | **★ 传感器算法原生单元测试**：编译 `firmware/App/Sensor/{gas,dht11,sensor_report}.c` + `firmware/tests/sensor_test.c` 并跑（**1235 条断言**，含五级中间量比对、迟滞、饱和钳位） | **每次改传感器算法后** |
+| `fw_prep/run_param_test.py` | **★ PID 参数打包原生单测**：编译 `firmware/App/Control/param_pack.c` + `tests/param_test.c`（**24 条断言**：float 位型往返一致 / magic 与个数校验 / 离谱值拒绝 / 7 个 ID 无串位） | 改调参或持久化后 |
+| `fw_prep/run_patrol_test.py` | **★ 巡检状态机原生单元测试**：编译 `firmware/App/Task/patrol.c` + `firmware/tests/patrol_test.c` 并跑（**67 条断言**，脚本化时间线：完整任务链 / 失联 / 急停 / 故障超时 / 迁移表） | **每次改状态机或安全策略后** |
+| **`fw_prep/run_all_tests.py`** | **★★ 一键跑完 B 阶段全部离线核验**：三个原生单测 + 交叉编译 + 向量表核验 + 引脚基线核验，输出汇总表（`--no-build` 可跳过编译） | **提交前 / 每轮收尾** |
+| `fw_prep/host_crosscheck.cpp` | 用 **C 侧真实代码**（`host/src/protocol/*.cpp`）复算测试向量（CRC/帧/流式），与 Python 实现交叉验证 | 协议冻结前 |
+| `fw_prep/check_crc.py` | CRC-16/MODBUS 四条用例的独立复算（Python 从零实现） | 协议冻结前 |
+| `fw_prep/pin_check.py` | **★ 引脚基线文件层核验**：从完工快照的 `PCB2.epcb2` 读 `PAD_NET`，与期望表逐脚比对（13 个位号） | 改板/改插座后 |
+| `fw_prep/FreeRTOSConfig_min.h`<br>`fw_prep/startup_min.S`<br>`fw_prep/stm32f405rg_flash.ld` | 冒烟测试用的最小配置 / 启动 / 链接（**不是**工程用的那份，工程用的在 `firmware/`） | 仅供 `smoke.py` |
+
 ### PCB 阶段专用
 
 | 文件 | 用途 | 何时用 |
