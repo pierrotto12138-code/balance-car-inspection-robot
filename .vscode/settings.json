@@ -1,0 +1,29 @@
+{
+  "//": "编辑器配置（随仓库共享）。目的：让跳转/补全按**真实编译参数**解析本项目。",
+  "//compile_commands": "先在 firmware/ 下执行 `make compile_commands` 生成该文件（本机生成物，不入库）。",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/firmware/compile_commands.json",
+  "C_Cpp.default.cStandard": "c11",
+  "C_Cpp.default.intelliSenseMode": "gcc-arm",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/firmware/Drivers/CMSIS",
+    "${workspaceFolder}/firmware/Drivers/FWLIB/inc",
+    "${workspaceFolder}/firmware/Middlewares/FreeRTOS/include",
+    "${workspaceFolder}/firmware/Middlewares/FreeRTOS/portable/GCC/ARM_CM4F"
+  ],
+  "C_Cpp.errorSquiggles": "enabled",
+  "files.associations": {
+    "*.S": "asm",
+    "*.ld": "linkerscript",
+    "FreeRTOSConfig.h": "c"
+  },
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.eol": "\n",
+  "search.exclude": {
+    "firmware/build": true,
+    "tools/fw_prep/out": true,
+    "hardware/固件快照_*": true,
+    "**/*.hex": true
+  },
+  "//clangd": "若用 clangd 而不是 C/C++ 扩展，它会自动读取 compile_commands.json，无需额外配置。"
+}

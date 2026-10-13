@@ -1,0 +1,10 @@
+{
+  "//": "推荐扩展。装完打开本仓库即可跳转/补全（需先在 firmware/ 下跑 make compile_commands）。",
+  "recommendations": [
+    "ms-vscode.cpptools",
+    "ms-vscode.cpptools-extension-pack",
+    "ms-vscode.hexeditor",
+    "mcu-debug.mcu-debug",
+    "STMicroelectronics.stm32-vscode-extension"
+  ]
+}

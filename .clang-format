@@ -10,9 +10,12 @@
 #        Drivers/FWLIB、Drivers/CMSIS、Middlewares/FreeRTOS、
 #        App/Sensor/DMP、App/Comms/DataScope、User/stm32f4xx*
 #
-#  本文件是"风格单一真相"：现有空白规范化脚本
-#  （tools/fw_prep/normalize_whitespace.py）只处理"行尾 + 尾随空白 + 混合缩进"，
-#  更细的排版（括号位置、续行缩进…）以本文件为准。
+#  ★★ 定位（2026-10-13 决定，决策 55）：**参考配置，当前不强制执行**。
+#     实际执行的格式规范见 docs/design_firmware/编码规范.md §五；
+#     本文件只作为"将来若要统一排版"的起点，**不要**据此对既有源码跑全量格式化：
+#       ① 会把真实逻辑改动淹没在格式 diff 里（实测数百处替换点）；
+#       ② 控制代码刚调好、答辩期不适合大动。
+#     若将来要执行：单独一个提交 + 用 tools/fw_prep/audit_refactor.py 证明"仅排版变化"。
 #
 #  ★ 本文件的键名已按 **clang-format 23.1.3** 校验过（`--dump-config` 对照）：
 #     · 20.x 起键名有变更（如 `EndOfLine` → `LineEnding`），换版本时请重跑一次校验。
