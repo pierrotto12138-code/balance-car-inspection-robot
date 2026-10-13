@@ -1,48 +1,61 @@
 #include "mainwindow.h"
 
+#include "ui/p0panel.h"
+
 #include <QLabel>
+#include <QStatusBar>
+#include <QTabWidget>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include "codec.h"
 #include "crc16.h"
+#include "io/link_manager.h"
 
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
+MainWindow::MainWindow(io::LinkManager *mgr, QWidget *parent)
+    : QMainWindow(parent), m_mgr(mgr)
 {
-    setWindowTitle(QStringLiteral("仓储环境安全巡检机器人 · 上位机（骨架）"));
-    resize(900, 600);
+    setWindowTitle(QStringLiteral("仓储环境安全巡检机器人 · 上位机（P0 通信链路）"));
+    resize(1100, 720);
 
-    auto *central = new QWidget(this);
-    auto *layout = new QVBoxLayout(central);
+    auto *tabs = new QTabWidget(this);
 
-    auto *title = new QLabel(QStringLiteral("上位机骨架 — 待实现面板："), central);
-    QFont f = title->font();
-    f.setPointSize(12);
-    f.setBold(true);
-    title->setFont(f);
+    // ---- ① 通信链路（P0 阶段的主角）----
+    tabs->addTab(new P0Panel(mgr, tabs), QStringLiteral("通信链路"));
 
-    auto *todo = new QLabel(
-        QStringLiteral(
-            "① 通信接口面板（串口选择 / 连接状态 / 丢帧率）\n"
-            "② 状态监测面板（姿态三通道曲线、轮速、任务进度）\n"
-            "③ 气体与环境面板（双路浓度曲线、阈值线、超限高亮）\n"
-            "④ 远程控制面板（运动控制、任务启停、巡检参数、急停）\n"
-            "⑤ 事件日志面板（告警滚动、历史回放、CSV 导出）"),
-        central);
+    // ---- ② 协议自检（原有内容，保留作"环境体检"）----
+    auto *selfTest = new QWidget(tabs);
+    auto *vl = new QVBoxLayout(selfTest);
+    auto *lbl = new QLabel(selfTest);
+    lbl->setWordWrap(true);
+    lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    lbl->setText(runProtocolSelfTest());
+    vl->addWidget(lbl);
+    vl->addStretch();
+    tabs->addTab(selfTest, QStringLiteral("协议自检"));
 
-    m_statusLabel = new QLabel(central);
-    m_statusLabel->setWordWrap(true);
-    m_statusLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    setCentralWidget(tabs);
 
-    layout->addWidget(title);
-    layout->addWidget(todo);
-    layout->addSpacing(12);
-    layout->addWidget(m_statusLabel);
-    layout->addStretch();
-    setCentralWidget(central);
-
-    m_statusLabel->setText(runProtocolSelfTest());
+    // 状态栏：一眼看到"有没有连上、主链路是谁"
+    connect(mgr, &io::LinkManager::linkStateChanged, this,
+            [this](io::LinkKind k, io::LinkState st, const QString &detail) {
+                statusBar()->showMessage(
+                    QStringLiteral("%1：%2 %3")
+                        .arg(QString::fromUtf8(io::linkName(k)),
+                             QString::fromUtf8(io::stateName(st)), detail));
+            });
+    connect(mgr, &io::LinkManager::frameReady, this,
+            [this](io::LinkKind k, quint8 cmd, const QByteArray &data) {
+                m_frames++;
+                statusBar()->showMessage(QStringLiteral("帧 %1 · 最近：%2（%3 字节，来自 %4）")
+                                             .arg(m_frames)
+                                             .arg(cmd, 2, 16, QLatin1Char('0'))
+                                             .arg(data.size())
+                                             .arg(QString::fromUtf8(io::linkName(k))),
+                                         2000);
+            });
+    statusBar()->showMessage(QStringLiteral("未连接 —— 选好端口后点\"连接\"；"
+                                            "没有板子时把\"实现方式\"切成\"假源\"即可先跑起来"));
 }
 
 QString MainWindow::runProtocolSelfTest()
@@ -87,8 +100,11 @@ QString MainWindow::runProtocolSelfTest()
     FrameDecoder dec3;
     const bool dropOk = (dec3.feed(bad).empty() && dec3.framesDropped() == 1);
 
+    // 5) 关键长度口径（协议 v1.1）：0x11 的 N 必须是 9
+    const bool n11Ok = (d.size() == 16); // 上面造的是 0x14
+
     QString s;
-    s += QStringLiteral("协议层自检（与 docs/protocol 第 2.1 节一致）\n\n");
+    s += QStringLiteral("协议层自检（与 docs/protocol/communication_protocol.md 一致）\n\n");
     s += QStringLiteral("① CRC-16 标准向量 \"123456789\" → 0x%1  %2\n")
              .arg(crc, 4, 16, QLatin1Char('0'))
              .arg(crcOk ? QStringLiteral("✔ 通过") : QStringLiteral("✘ 失败"));
@@ -98,10 +114,13 @@ QString MainWindow::runProtocolSelfTest()
              .arg(splitOk ? QStringLiteral("✔ 通过") : QStringLiteral("✘ 失败"));
     s += QStringLiteral("④ 坏校验丢弃  %1\n")
              .arg(dropOk ? QStringLiteral("✔ 通过") : QStringLiteral("✘ 失败"));
+    s += QStringLiteral("⑤ 0x14 数据段长度 16 字节  %1\n")
+             .arg(n11Ok ? QStringLiteral("✔ 通过") : QStringLiteral("✘ 失败"));
+    s += QStringLiteral("\n协议版本：v1.1（含安全通道事件码 0x08/0x09/0x0A）\n");
 
-    const bool allOk = crcOk && rtOk && splitOk && dropOk;
+    const bool allOk = crcOk && rtOk && splitOk && dropOk && n11Ok;
     s += QStringLiteral("\n结论：%1")
-             .arg(allOk ? QStringLiteral("协议层工作正常，可开始对接固件。")
+             .arg(allOk ? QStringLiteral("协议层工作正常，可对接固件。")
                         : QStringLiteral("存在失败项，需排查。"));
     return s;
 }

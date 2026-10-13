@@ -1,0 +1,272 @@
+#include "io/replay_link.h"
+
+#include "codec.h"
+
+#include <QDateTime>`n#include <QElapsedTimer>
+#include <QFile>
+#include <QRandomGenerator>
+#include <QTextStream>
+#include <QTimer>
+
+#include <cmath>
+
+namespace io {
+
+namespace {
+
+/// 合成数据用的时间基准（毫秒）
+quint32 nowMs()
+{
+    return static_cast<quint32>(QDateTime::currentMSecsSinceEpoch() & 0xFFFFFFFFull);
+}
+
+QByteArray toQ(const std::vector<uint8_t> &v)
+{
+    return QByteArray(reinterpret_cast<const char *>(v.data()), static_cast<int>(v.size()));
+}
+
+} // namespace
+
+ReplayLink::ReplayLink(LinkKind kind, QObject *parent) : LinkBase(kind, parent)
+{
+    m_timer = new QTimer(this);
+    // 20 ms 基准节拍：协议里最快的周期帧是 50 ms（20 Hz），
+    // 取 20 ms 是为了让"按周期拆分发送"足够细；倍数放大时再缩短。
+    connect(m_timer, &QTimer::timeout, this, &ReplayLink::onTick);
+}
+
+ReplayLink::~ReplayLink() = default;
+
+void ReplayLink::setRateMultiplier(double x)
+{
+    m_rate = (x > 0.0) ? x : 1.0;
+}
+
+void ReplayLink::setCorruptRatio(double ratio)
+{
+    m_corruptRatio = (ratio < 0.0) ? 0.0 : (ratio > 1.0 ? 1.0 : ratio);
+}
+
+void ReplayLink::open()
+{
+    m_t0 = nowMs();
+    m_tickCount = 0;
+    m_captureIdx = 0;
+    m_virtualMs = 0;
+    m_lastPose = m_lastMotion = m_lastTask = m_lastEnv = m_lastHb = 0;
+    m_decoder.reset();
+    m_clock.start();
+    // 节拍只决定"多久检查一次"，**不决定速率**：速率由实测经过时间 × 倍数算出来。
+    // ★ 这一点很关键：Windows 默认定时器粒度≈15.6 ms，5 ms 的 QTimer 实际约 15 ms 才触发；
+    //   若按"节拍 × 倍数"累计虚拟时间，产帧率会掉到标称值的 1/3（实测 600 ms 只有 10 帧）。
+    //   用 QElapsedTimer 量真实经过时间后，产帧率与系统抖动无关。
+    m_timer->setTimerType(Qt::PreciseTimer);
+    m_timer->start(kBaseTickMs);
+    setState(LinkState::Open,
+             synthetic() ? QStringLiteral("合成数据源 ×%1").arg(m_rate, 0, 'f', 1)
+                         : QStringLiteral("回放 %1 帧").arg(m_capture.size()));
+}
+
+void ReplayLink::close()
+{
+    m_timer->stop();
+    setState(LinkState::Closed, QString());
+}
+
+qint64 ReplayLink::sendCommand(std::uint8_t cmd, const QByteArray &data)
+{
+    if (!isOpen()) {
+        return -1;
+    }
+    const std::vector<uint8_t> payload(data.begin(), data.end());
+    const QByteArray out = toQ(proto::encodeFrame(cmd, payload));
+    bumpTx(out.size());
+
+    // 假源也要能验证"调参往返"：对 0x24 立刻原样回一条（与固件"回读实际生效值"同形）——
+    // 真实固件的回读值来自 Flash/全局量，这里只是把值原样送回，够 P0 用。
+    if (cmd == proto::down::kPidTune && data.size() >= 6) {
+        m_generated++;
+        emitRawFrame(out);
+        emit replyEmitted(cmd, data);
+    }
+    emitStats();
+    return out.size();
+}
+
+int ReplayLink::loadCapture(const QString &path)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return -1;
+    }
+    QTextStream in(&f);
+    m_capture.clear();
+    while (!in.atEnd()) {
+        const QString line = in.readLine().trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) {
+            continue;
+        }
+        // 支持 "AA 55 ..." 与 "AA55..." 两种写法；忽略行内其它非十六进制字符
+        QString hex;
+        for (const QChar &ch : line) {
+            if (ch.isLetterOrNumber()) {
+                hex.append(ch);
+            }
+        }
+        if (hex.size() < 2) {
+            continue;
+        }
+        const QByteArray bytes = QByteArray::fromHex(hex.toLatin1());
+        // 一行可能含多帧：按帧头切开，逐个存入
+        int start = 0;
+        while (true) {
+            const int p = bytes.indexOf(QByteArray("\xAA\x55", 2), start);
+            if (p < 0) {
+                break;
+            }
+            const int next = bytes.indexOf(QByteArray("\xAA\x55", 2), p + 2);
+            const int end = (next < 0) ? bytes.size() : next;
+            m_capture.append(bytes.mid(p, end - p));
+            start = end;
+        }
+    }
+    return m_capture.size();
+}
+
+QByteArray ReplayLink::makePose(quint32 tMs)
+{
+    std::vector<uint8_t> d;
+    const double ang = std::sin(tMs / 1500.0) * 12.5; // ±12.5°：看起来很"真实"
+    proto::putI16(d, static_cast<int16_t>(ang * 100));            // 俯仰 0.01°
+    proto::putI16(d, static_cast<int16_t>(std::sin(tMs / 900.0) * 300)); // 横滚
+    proto::putI16(d, 0);                                          // 偏航
+    proto::putI16(d, static_cast<int16_t>(std::cos(tMs / 1500.0) * 200));
+    proto::putI16(d, 0);
+    proto::putI16(d, 15);
+    return toQ(proto::encodeFrame(proto::up::kPose, d));
+}
+
+QByteArray ReplayLink::makeMotion(quint32 tMs)
+{
+    std::vector<uint8_t> d;
+    const int spd = static_cast<int>(350 * std::sin(tMs / 2000.0));
+    proto::putI16(d, static_cast<int16_t>(spd));      // 左轮速 mm/s
+    proto::putI16(d, static_cast<int16_t>(spd));      // 右轮速
+    proto::putI16(d, static_cast<int16_t>(spd / 2));  // PWM 千分比
+    proto::putU16(d, 120);                            // 距离 cm
+    d.push_back(0x00);                                // 避障状态位
+    return toQ(proto::encodeFrame(proto::up::kMotion, d));
+}
+
+QByteArray ReplayLink::makeTask(quint32 tMs)
+{
+    std::vector<uint8_t> d;
+    const int phase = (tMs / 5000) % 8;
+    d.push_back(static_cast<uint8_t>(proto::TaskId::Patrol));
+    d.push_back(static_cast<uint8_t>(phase));
+    d.push_back(static_cast<uint8_t>((tMs / 100) % 101)); // 完成度 %
+    d.push_back(static_cast<uint8_t>((tMs / 8000) % 5));  // 巡检点
+    d.push_back(0x00);                                    // 异常标志
+    return toQ(proto::encodeFrame(proto::up::kTask, d));
+}
+
+QByteArray ReplayLink::makeEnvGas(quint32 tMs)
+{
+    std::vector<uint8_t> d;
+    proto::putU16(d, 1234);
+    proto::putU16(d, 2345);
+    // 每 30 s 来一次"气体冲高"，方便看报警与曲线
+    const bool spike = (tMs % 30000) < 4000;
+    const double mq2 = spike ? 420.0 : 45.0 + 10.0 * std::sin(tMs / 3000.0);
+    const double mq135 = spike ? 610.0 : 62.0 + 12.0 * std::cos(tMs / 2500.0);
+    proto::putU16(d, static_cast<uint16_t>(mq2 * 10));
+    proto::putU16(d, static_cast<uint16_t>(mq135 * 10));
+    proto::putI16(d, 256);   // 25.6 ℃
+    proto::putU16(d, 610);   // 61.0 %RH
+    d.push_back(0x0F);       // 就绪位
+    d.push_back(spike ? static_cast<uint8_t>(proto::SampleGear::Fast)
+                      : static_cast<uint8_t>(proto::SampleGear::Normal));
+    return toQ(proto::encodeFrame(proto::up::kEnvGas, d));
+}
+
+void ReplayLink::emitRawFrame(const QByteArray &bytes)
+{
+    // 故意掺坏帧（翻转最后一个字节 = 破坏 CRC），用来验证丢帧统计
+    QByteArray out = bytes;
+    if (m_corruptRatio > 0.0 &&
+        QRandomGenerator::global()->generateDouble() < m_corruptRatio && !out.isEmpty()) {
+        out[out.size() - 1] = static_cast<char>(out[out.size() - 1] ^ 0xFF);
+    }
+    m_stats.bytesRx += static_cast<quint64>(out.size());
+    emit rawBytes(kind(), out);
+
+    // ★ 必须自己解帧：真串口是在读线程里解的（SerialLink::Reader），
+    //   假源如果只发原始字节，上层就永远收不到 frameReady —— 这曾经让 P0 的
+    //   五个测试全部拿到 0 帧。解帧统计同样以 FrameDecoder 为唯一来源。
+    const auto frames = m_decoder.feed(reinterpret_cast<const uint8_t *>(out.constData()),
+                                       static_cast<std::size_t>(out.size()));
+    for (const proto::Frame &f : frames) {
+        emit frameReady(kind(), static_cast<quint8>(f.cmd),
+                        QByteArray(reinterpret_cast<const char *>(f.data.data()),
+                                   static_cast<int>(f.data.size())));
+    }
+    m_stats.framesOk = m_decoder.framesOk();
+    m_stats.framesDropped = m_decoder.framesDropped();
+    ++m_generated;
+}
+
+int ReplayLink::dueCount(quint64 &last, quint64 periodMs)
+{
+    int n = 0;
+    // 虚拟时间一次跨过多个周期时**补发**（而不是只发一条），否则高倍数下会系统性少发
+    while (m_virtualMs - last >= periodMs && n < kMaxCatchUp) {
+        last += periodMs;
+        ++n;
+    }
+    return n;
+}
+
+void ReplayLink::onTick()
+{
+    if (!isOpen()) {
+        return;
+    }
+    ++m_tickCount;
+
+    // 虚拟时间 = 实测经过时间 × 倍数（与定时器粒度无关）
+    m_virtualMs = static_cast<quint64>(static_cast<double>(m_clock.elapsed()) * m_rate);
+
+    if (!m_capture.isEmpty()) {
+        // ---- 文件回放：按倍数每拍发 N 帧 ----
+        const int n = qBound(1, static_cast<int>(std::lround(m_rate)), kMaxCatchUp);
+        for (int k = 0; k < n; ++k) {
+            emitRawFrame(m_capture.at(m_captureIdx));
+            m_captureIdx = (m_captureIdx + 1) % m_capture.size();
+        }
+        emitStats();
+        return;
+    }
+
+    // ---- 合成：按协议真实周期产帧（周期见 communication_protocol.md §三）----
+    const quint32 vms = static_cast<quint32>(m_virtualMs);
+    for (int i = dueCount(m_lastPose, 50); i > 0; --i) { // 0x10 姿态 20 Hz
+        emitRawFrame(makePose(vms));
+    }
+    for (int i = dueCount(m_lastMotion, 50); i > 0; --i) { // 0x11 运动 20 Hz
+        emitRawFrame(makeMotion(vms));
+    }
+    for (int i = dueCount(m_lastTask, 200); i > 0; --i) { // 0x12 任务 5 Hz
+        emitRawFrame(makeTask(vms));
+    }
+    for (int i = dueCount(m_lastEnv, 1000); i > 0; --i) { // 0x14 环境 1 Hz
+        emitRawFrame(makeEnvGas(vms));
+    }
+    for (int i = dueCount(m_lastHb, 200); i > 0; --i) { // 0x1F 心跳 5 Hz
+        emitRawFrame(toQ(proto::encodeFrame(proto::up::kHeartbeat, {})));
+    }
+    emitStats();
+}
+
+} // namespace io
+
+#include "replay_link.moc"
