@@ -110,3 +110,8 @@ docs/task/*任务书_1组*
 
 # 由 tools/fw_prep/smoke.py 运行时生成
 tools/fw_prep/smoke_main.c
+
+# 核验脚本的产物（可执行文件 / 目标文件 / 临时日志），不入库
+tools/fw_prep/out/
+__pycache__/
+*.pyc
