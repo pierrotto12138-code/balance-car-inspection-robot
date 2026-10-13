@@ -24,27 +24,34 @@ void Pages_Next(void)
 
 /* ---------------------------------------------------------------------------
  * 小工具：OLED 只能显示整数，这里手工排小数点
- * 字号 12 时每字符宽 6 像素，一行 21 字符（128 像素）
+ *
+ * ★ 字号 12 的**真实步距**（照 `oled.c` 源码，别猜）：
+ *     · `OLED_ShowString()` 每字符 **8 px**（函数内 `x += 8`）→ 一行最多 16 个字符
+ *     · `OLED_ShowNumber()` 每个数字 **size/2 = 6 px**（`x + (size/2)*t`）
+ *   所以"数字 + 小数点 + 数字"必须按 6 / 8 / 6 排：
+ *     x → 整数 2 位（12 px）→ x+12 是小数点（8 px）→ x+20 是小数位（6 px）
+ *   （本注释原先按"每字符 6 px"写过，导致小数点与数字重叠 —— 2026-10-09 由
+ *     《人机界面设计说明》的排布核对发现并修正。）
  * -------------------------------------------------------------------------*/
 static void show_num(u8 x, u8 y, u32 v, u8 len)
 {
 	OLED_ShowNumber(x, y, v, len, 12);
 }
 
-/* 显示 x.y（1 位小数，值 = v10/10）*/
+/* 显示 x.y（1 位小数，值 = v10/10）：宽 = 12 + 8 + 6 = 26 px */
 static void show_x1(u8 x, u8 y, u16 v10)
 {
 	show_num(x, y, (u32)(v10 / 10u), 2);
 	OLED_ShowString((u8)(x + 12), y, S("."));
-	show_num((u8)(x + 18), y, (u32)(v10 % 10u), 1);
+	show_num((u8)(x + 20), y, (u32)(v10 % 10u), 1);
 }
 
-/* 显示 xx.yy（2 位小数，值 = v100/100）—— 用于 Rs/R0 */
+/* 显示 xx.yy（2 位小数，值 = v100/100）：宽 = 12 + 8 + 12 = 32 px —— 用于 Rs/R0 */
 static void show_x2(u8 x, u8 y, u32 v100)
 {
 	show_num(x, y, v100 / 100u, 2);
 	OLED_ShowString((u8)(x + 12), y, S("."));
-	show_num((u8)(x + 18), y, v100 % 100u, 2);
+	show_num((u8)(x + 20), y, v100 % 100u, 2);
 }
 
 /* ---------------------------------------------------------------------------
@@ -82,7 +89,8 @@ static void show_gas_page(void)
 		OLED_ShowString(96, 0, S("1HZ"));
 	}
 
-	/* 第 2 行：MQ-2（估计浓度 ppm，报警时右侧提示）*/
+	/* 第 2 行：MQ-2（估计浓度 ppm，报警时右侧提示）
+	   "MQ2" 3×8=24 → 值 26 px（24..49）→ "ppm" 3×8=24（60..83）→ "ALM"（90..113）*/
 	OLED_ShowString(0, 10, S("MQ2"));
 	show_x1(24, 10, g.mq2PpmX10);
 	OLED_ShowString(60, 10, S("ppm"));
@@ -91,38 +99,42 @@ static void show_gas_page(void)
 		OLED_ShowString(90, 10, S("ALM"));
 	}
 
-	/* 第 3 行：MQ-135 */
+	/* 第 3 行：MQ-135
+	   "MQ135" 5×8=40 → 值 26 px（44..69）→ "ppm"（78..101）→ 报警只放 1 个字符 A（108..115）*/
 	OLED_ShowString(0, 20, S("MQ135"));
-	show_x1(42, 20, g.mq135PpmX10);
+	show_x1(44, 20, g.mq135PpmX10);
 	OLED_ShowString(78, 20, S("ppm"));
 	if (g.mq135Alarm)
 	{
 		OLED_ShowString(108, 20, S("A"));
 	}
 
-	/* 第 4 行：温湿度（DHT11 无效时明确显示 N/A，不含糊）*/
+	/* 第 4 行：温湿度（DHT11 无效时明确显示 N/A，不含糊）
+	   T(0..7) 值 26 px(12..37) C(44..51) H(56..63) 值(68..93) %(96..103) */
 	if (g.dhtValid)
 	{
 		OLED_ShowString(0, 30, S("T"));
 		show_x1(12, 30, (u16)g.tempX10);
-		OLED_ShowString(36, 30, S("C"));
-		OLED_ShowString(48, 30, S("H"));
-		show_x1(60, 30, g.humiX10);
-		OLED_ShowString(84, 30, S("%"));
+		OLED_ShowString(44, 30, S("C"));
+		OLED_ShowString(56, 30, S("H"));
+		show_x1(68, 30, g.humiX10);
+		OLED_ShowString(96, 30, S("%"));
 	}
 	else
 	{
 		OLED_ShowString(0, 30, S("T/H  N/A"));
 	}
 
-	/* 第 5 行：Rs/R0（决策 18 的"主链路量"）—— 左 MQ-2、右 MQ-135 */
+	/* 第 5 行：Rs/R0（决策 18 的"主链路量"）—— 左 MQ-2、右 MQ-135
+	   "Rs/R0" 5×8=40 → 值 32 px（44..75）→ 值 32 px（80..111）*/
 	OLED_ShowString(0, 40, S("Rs/R0"));
-	show_x2(42, 40, (u32)(g.mq2Ratio * 100.0f + 0.5f));
-	show_x2(78, 40, (u32)(g.mq135Ratio * 100.0f + 0.5f));
+	show_x2(44, 40, (u32)(g.mq2Ratio * 100.0f + 0.5f));
+	show_x2(80, 40, (u32)(g.mq135Ratio * 100.0f + 0.5f));
 
-	/* 第 6 行：R0 是否已标定 + 温湿度补偿是否开启 */
+	/* 第 6 行：R0 是否已标定 + 温湿度补偿是否开启
+	   "CAL OK" 6×8=48（0..47）→ "COMP OFF" 8×8=64（56..119）*/
 	OLED_ShowString(0, 50, (g.mq2R0 > 0.0f) ? S("CAL OK") : S("CAL..."));
-	OLED_ShowString(60, 50, (g.readyBits & PROTO_RDY_COMP) ? S("COMP ON") : S("COMP OFF"));
+	OLED_ShowString(56, 50, (g.readyBits & PROTO_RDY_COMP) ? S("COMP ON") : S("COMP OFF"));
 }
 
 /* ---------------------------------------------------------------------------
@@ -159,40 +171,46 @@ static void show_patrol_page(void)
 
 	if (App_GetPatrol(&p) == 0)
 	{
+		/* "PATROL" 6×8=48（0..47）→ 阶段文本（48..95，最长 6 字符）→ 页码（120..127）*/
 		OLED_ShowString(48, 0, S(phase_text(p.phase)));
 
+		/* TASK(0..31) 任务号(32..43) PROG(52..83) 进度 3 位(84..101) %(104..111) */
 		OLED_ShowString(0, 10, S("TASK"));
-		show_num(30, 10, p.taskId, 2);
-		OLED_ShowString(54, 10, S("PROG"));
+		show_num(32, 10, p.taskId, 2);
+		OLED_ShowString(52, 10, S("PROG"));
 		show_num(84, 10, p.progress, 3);
-		OLED_ShowString(102, 10, S("%"));
+		OLED_ShowString(104, 10, S("%"));
 
+		/* WP(0..15) 点号(16..21) STOP(30..61) 原因 2 位(64..75) LOCK(88..119) */
 		OLED_ShowString(0, 20, S("WP"));
-		show_num(18, 20, p.waypoint, 1);
+		show_num(16, 20, p.waypoint, 1);
 		OLED_ShowString(30, 20, S("STOP"));
-		show_num(60, 20, p.stopReason, 2);
+		show_num(64, 20, p.stopReason, 2);
 		if (p.safetyStop)
 		{
-			OLED_ShowString(90, 20, S("LOCK"));
+			OLED_ShowString(88, 20, S("LOCK"));
 		}
 	}
 
 	if (App_GetDiag(&d) == 0)
 	{
-		/* 两条链路各收到多少字节、丢了多少（诊断环形缓冲是否够用）*/
+		/* 两条链路各收到多少字节、丢了多少（诊断环形缓冲是否够用）
+		   "BT rx" 5×8=40（0..39）→ 5 位数值 30 px（44..73）*/
 		OLED_ShowString(0, 30, S("BT rx"));
-		show_num(36, 30, d.rxBytesBt, 5);
-		OLED_ShowString(0, 40, S("WR rx"));
-		show_num(36, 40, d.rxBytesWire, 5);
-		OLED_ShowString(72, 40, S("dr"));
-		show_num(90, 40, d.rxDroppedWire, 3);
+		show_num(44, 30, d.rxBytesBt, 5);
 
-		/* 解帧成功数 + 剩余堆（KB）—— 排障两件套 */
+		/* WR rx(0..39) 数值(44..73) dr(78..93) 丢弃 3 位(96..113) */
+		OLED_ShowString(0, 40, S("WR rx"));
+		show_num(44, 40, d.rxBytesWire, 5);
+		OLED_ShowString(78, 40, S("dr"));
+		show_num(96, 40, d.rxDroppedWire, 3);
+
+		/* FR(0..15) 解帧数 5 位(18..47) Hp(54..69) 剩余堆 4 位(72..95) K(100..107) */
 		OLED_ShowString(0, 50, S("FR"));
 		show_num(18, 50, d.framesOk, 5);
 		OLED_ShowString(54, 50, S("Hp"));
 		show_num(72, 50, d.heapFreeBytes / 1024u, 4);
-		OLED_ShowString(102, 50, S("K"));
+		OLED_ShowString(100, 50, S("K"));
 	}
 }
 

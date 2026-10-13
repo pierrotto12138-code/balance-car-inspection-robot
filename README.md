@@ -10,6 +10,8 @@
 > | **🤖 AI 编码代理** | [`AGENTS.md`](AGENTS.md) —— 路径、桥接、**29 条踩坑铁律**、能力边界 |
 > | **📚 找文档** | [`docs/文档索引.md`](docs/文档索引.md) |
 > | **🔧 板子到了要焊** | [`docs/design_hardware/焊接调试手册.md`](docs/design_hardware/焊接调试手册.md) |
+> | **🔍 焊完逐项自检** | [`docs/design_hardware/上板自检清单.md`](docs/design_hardware/上板自检清单.md) |
+> | **📦 元件清单（可下单）** | [`docs/design_hardware/BOM表.md`](docs/design_hardware/BOM表.md) |
 
 ---
 
@@ -90,7 +92,8 @@
 │   ├── task/                 # 课程任务书、分组统计（只读）
 │   ├── proposal/             # 立项文档、项目计划书
 │   ├── protocol/             # ★ 双向通信协议
-│   ├── design_hardware/      # ★ 引脚表、车体解析、接口规划、PCB 渲染图、焊接调试手册
+│   ├── design_hardware/      # ★ 引脚表、车体解析、接口规划、PCB 渲染图、
+│   │                         #   焊接调试手册、上板自检清单、BOM 表、人机界面说明
 │   ├── design_firmware/      # 固件架构
 │   ├── design_host/          # 上位机设计
 │   ├── handoff/              # ★ 交接说明（新读者从这里开始）
