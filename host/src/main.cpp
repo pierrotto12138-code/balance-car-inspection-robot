@@ -90,6 +90,10 @@ int main(int argc, char *argv[])
                                 QStringLiteral("无界面自检：假源跑 N 秒后打印统计并退出"),
                                 QStringLiteral("秒"), QStringLiteral("3"));
     parser.addOption(selftest);
+    // 演示模式：两条链路都切假源并自动连接 —— 板子没到 / 演示现场硬件故障时用
+    QCommandLineOption demo(QStringLiteral("demo"),
+                            QStringLiteral("演示模式：两条链路用假源并自动连接（打开就有数据在跑）"));
+    parser.addOption(demo);
     parser.process(app);
 
     if (parser.isSet(selftest)) {
@@ -97,7 +101,14 @@ int main(int argc, char *argv[])
     }
 
     io::LinkManager manager;
+    if (parser.isSet(demo)) {
+        manager.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
+        manager.setMode(io::LinkKind::Bluetooth, io::LinkManager::Mode::Replay);
+    }
     MainWindow w(&manager);
     w.show();
+    if (parser.isSet(demo)) {
+        manager.openAll(); // 窗口显示后再开链路，界面上能直接看到状态变化
+    }
     return app.exec();
 }

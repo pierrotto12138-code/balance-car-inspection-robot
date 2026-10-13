@@ -78,11 +78,15 @@ QColor stateColor(io::LinkState st)
 P0Panel::P0Panel(io::LinkManager *mgr, QWidget *parent) : QWidget(parent), m_mgr(mgr)
 {
     auto *root = new QVBoxLayout(this);
+    setMinimumWidth(900); // 再窄就会出现卡片被裁（见 P0 截图发现）
 
     // ---------------- 两条链路的卡片 ----------------
-    auto *cards = new QHBoxLayout;
-    cards->addWidget(buildLinkGroup(io::LinkKind::Wire), 1);
-    cards->addWidget(buildLinkGroup(io::LinkKind::Bluetooth), 1);
+    // ★ 上下堆叠而不是左右并排：并排时卡片的"最小宽度"（下拉框 + 状态文本 + 统计文本）
+    //   加起来会超过窗口，右侧卡片被裁掉（截图发现）。堆叠后每张卡片占满宽度，永远不被裁。
+    auto *cards = new QVBoxLayout;
+    cards->setSpacing(6);
+    cards->addWidget(buildLinkGroup(io::LinkKind::Wire));
+    cards->addWidget(buildLinkGroup(io::LinkKind::Bluetooth));
     root->addLayout(cards);
 
     // ---------------- 全局控制 ----------------
@@ -177,36 +181,64 @@ QWidget *P0Panel::buildLinkGroup(io::LinkKind kind)
 {
     const int i = static_cast<int>(kind);
     auto *box = new QGroupBox(QString::fromUtf8(io::linkName(kind)), this);
-    auto *form = new QFormLayout(box);
+    // ★ 两列网格而不是 QFormLayout：QFormLayout 一行只放一个字段，两张卡片摞起来
+    //   会把报文日志挤出窗口（截图发现）。两列排布把每张卡片压到 3 行左右。
+    auto *grid = new QGridLayout(box);
+    grid->setHorizontalSpacing(8);
+    grid->setVerticalSpacing(4);
+    grid->setColumnStretch(1, 1);
+    grid->setColumnStretch(3, 1);
 
     m_ui[i].mode = new QComboBox(box);
     m_ui[i].mode->addItem(QStringLiteral("真实串口"), static_cast<int>(io::LinkManager::Mode::Serial));
     m_ui[i].mode->addItem(QStringLiteral("假源（离线/演示）"),
                           static_cast<int>(io::LinkManager::Mode::Replay));
-    form->addRow(QStringLiteral("实现方式"), m_ui[i].mode);
-
-    m_ui[i].port = new QComboBox(box);
-    m_ui[i].port->setEditable(true);
-    form->addRow(QStringLiteral("端口"), m_ui[i].port);
+    // ★ 初值必须**取自 LinkManager**，不能想当然用下拉框第 0 项：
+    //   main() 里可能已经按命令行切过模式（如 --demo 切到假源），
+    //   若这里默认选"真实串口"，随后的 onModeChanged 会把管理器的模式**改回去**
+    //   ——现象就是"加了 --demo 却报未选择串口"。
+    m_ui[i].mode->setCurrentIndex(m_mgr->mode(kind) == io::LinkManager::Mode::Replay ? 1 : 0);
+    m_ui[i].mode->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_ui[i].mode->setMinimumContentsLength(8);
+    grid->addWidget(new QLabel(QStringLiteral("实现方式"), box), 0, 0);
+    grid->addWidget(m_ui[i].mode, 0, 1);
 
     m_ui[i].baud = new QComboBox(box);
     for (int b : {9600, 19200, 38400, 57600, 115200, 230400}) {
         m_ui[i].baud->addItem(QString::number(b), b);
     }
     m_ui[i].baud->setCurrentText(QStringLiteral("115200"));
-    form->addRow(QStringLiteral("波特率"), m_ui[i].baud);
+    m_ui[i].baud->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    grid->addWidget(new QLabel(QStringLiteral("波特率"), box), 0, 2);
+    grid->addWidget(m_ui[i].baud, 0, 3);
+
+    m_ui[i].port = new QComboBox(box);
+    m_ui[i].port->setEditable(true);
+    // 允许收缩：否则长端口描述（如"COM3 — USB-SERIAL CH340"）会把卡片撑到窗口之外
+    m_ui[i].port->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_ui[i].port->setMinimumContentsLength(10);
+    m_ui[i].port->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    grid->addWidget(new QLabel(QStringLiteral("端口"), box), 1, 0);
+    grid->addWidget(m_ui[i].port, 1, 1);
 
     auto *row = new QHBoxLayout;
     m_ui[i].connect = new QPushButton(QStringLiteral("连接"), box);
     m_ui[i].state = new QLabel(box);
+    m_ui[i].state->setWordWrap(true);
     row->addWidget(m_ui[i].connect);
     row->addWidget(m_ui[i].state, 1);
-    form->addRow(row);
+    grid->addLayout(row, 1, 2, 1, 2);
 
     m_ui[i].stats = new QLabel(box);
     m_ui[i].stats->setTextFormat(Qt::RichText);
     m_ui[i].stats->setWordWrap(true);
-    form->addRow(QStringLiteral("统计"), m_ui[i].stats);
+    // ★ 允许收缩到很小：富文本标签的最小宽度按"最长不可断行段"算，
+    //   不设这个上限时它会把整张卡片撑宽（截图发现的另一个溢出源）。
+    m_ui[i].stats->setMinimumWidth(1);
+    grid->addWidget(new QLabel(QStringLiteral("统计"), box), 2, 0, Qt::AlignTop);
+    grid->addWidget(m_ui[i].stats, 2, 1, 1, 3);
+
+    box->setMinimumWidth(300);
 
     connect(m_ui[i].mode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this, kind] { onModeChanged(kind); });
@@ -318,13 +350,13 @@ void P0Panel::refreshStats()
         const auto kind = static_cast<io::LinkKind>(i);
         const io::LinkStats s = m_mgr->stats(kind);
         m_ui[i].stats->setText(
-            QStringLiteral("收 <b>%1</b> B · 发 <b>%2</b> B<br/>解帧 <b>%3</b> · 丢帧 <b>%4</b>"
-                           "（%5%）· 重连 %6<br/>帧率 <b>%7</b> 帧/s")
+            QStringLiteral("RX <b>%1</b> B · TX <b>%2</b> B · 帧 <b>%3</b><br/>"
+                           "丢 <b>%4</b>（%5%）· 重连 %6 · <b>%7</b> 帧/s")
                 .arg(s.bytesRx)
                 .arg(s.bytesTx)
                 .arg(s.framesOk)
                 .arg(s.framesDropped)
-                .arg(QString::number(s.dropRate() * 100.0, 'f', 2))
+                .arg(QString::number(s.dropRate() * 100.0, 'f', 1))
                 .arg(s.reconnects)
                 .arg(QString::number(m_rateFps[i], 'f', 1)));
     }

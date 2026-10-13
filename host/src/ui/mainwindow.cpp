@@ -16,7 +16,7 @@ MainWindow::MainWindow(io::LinkManager *mgr, QWidget *parent)
     : QMainWindow(parent), m_mgr(mgr)
 {
     setWindowTitle(QStringLiteral("仓储环境安全巡检机器人 · 上位机（P0 通信链路）"));
-    resize(1100, 720);
+    resize(1250, 780);
 
     auto *tabs = new QTabWidget(this);
 
