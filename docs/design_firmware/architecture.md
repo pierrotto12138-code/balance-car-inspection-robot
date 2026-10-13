@@ -152,27 +152,35 @@ StateSnapshot get_state(void)
 
 ---
 
-## 五、新增代码目录建议
+## 五、代码目录（**2026-10-13 按实现更新**）
+
+> 本节原本是"目录建议"，现已按真实落地的结构重写；**唯一的规范来源是
+> [`编码规范.md`](编码规范.md) §一（分层与依赖方向）**，这里只列目录。
 
 ```
 firmware/
-├── Core/                      # CubeMX/Keil 生成（时钟、中断、外设初始化）
-├── Drivers/                   # FWLIB 标准外设库
-├── Middlewares/FreeRTOS/      # FreeRTOS 源码
+├── Drivers/                   # FWLIB 标准外设库 + CMSIS + BSP（各外设驱动）
+├── Middlewares/FreeRTOS/      # FreeRTOS V11.1.0 + GCC/ARM_CM4F 移植 + heap_4
+├── System/                    # 厂商移植层：sys / delay（已改 DWT + 回调钩子）/ usart
 ├── App/
-│   ├── Control/               # PID 三环（沿用基线）
-│   ├── Sensor/
-│   │   ├── mpu6050.c          # 沿用基线
-│   │   ├── gas.c              # ★ 新增：双路气体 + 补偿
-│   │   └── dht11.c            # ★ 新增：温湿度
-│   ├── Task/
-│   │   └── patrol.c           # ★ 新增：巡检状态机
-│   ├── Comms/
-│   │   ├── protocol.c         # ★ 新增：自研协议组包/解包
-│   │   └── crc16.c            # ★ 新增：CRC-16/MODBUS（与上位机同算法）
-│   └── Ui/                    # OLED + 按键 + 蜂鸣器
-└── User/                      # 任务创建与调度
+│   ├── Board/                 # ★ 新增：**App 访问厂商全局量的唯一出口**
+│   │   └── board_state.c      #   Board_ReadRaw / Read|WriteVendorStop / Board_LedSet / PID 同步
+│   ├── Config/                # app_config.h：所有"要按实测调整"的量集中在此
+│   ├── Control/               # PID 三环（沿用基线）+ param_pack/param_store（调参持久化）
+│   ├── Sensor/                # gas / dht11(+_hw) / sensor_adc / sensor_report / MPU6050 / DMP
+│   ├── Task/                  # app_tasks（4 个任务）/ patrol（状态机）/ odom（里程）/ app_api.h
+│   ├── Comms/                 # protocol / crc16 / ringbuf / comm_link / DataScope
+│   ├── Filter/                # 卡尔曼 / 互补滤波（沿用基线）
+│   └── Ui/                    # pages（自研页 1/2）/ show（厂商页 0）/ buzzer
+└── User/                      # main.c 启动 + stm32f4xx_it.c + FreeRTOSConfig.h + rtos_hooks.c
 ```
+
+**两条新增的架构约定**（P2 结构整改，都是"防止同一个东西有多个出口"）：
+
+| 约定 | 内容 | 为什么 |
+|---|---|---|
+| **厂商量单一出口** | App 层只能通过 `App/Board/board_state.h` 访问厂商全局量；App 层**零 `extern`** | 否则"同一个全局量在 N 个文件里各自读" → 换板/换厂商要满仓库找 |
+| **依赖单向** | `App → System/BSP`，底层不许回指上层；底层需要上层能力时用**回调注入**（`Delay_SetMsHook()`） | `delay.c` 原先 `extern App_SchedulerRunning()` 属于依赖倒挂 |
 
 > **CRC-16 必须是同一份实现**：上位机侧已实现并通过测试（`host/src/protocol/crc16.cpp`），
 > 固件侧照它翻译成 C，并用协议文档第 2.1 节的用例交叉验证。
@@ -232,3 +240,4 @@ firmware/
 | 日期 | 内容 |
 |---|---|
 | 2026-09-22 | 初版：依据基线源码（卡尔曼版）与混合架构决策，确定任务划分、数据共享方案与改造清单 |
+| 2026-10-13 | §五 由"目录建议"改写为**按实现的实际目录**，并补两条架构约定（厂商量单一出口 `App/Board/board_state`、依赖单向 + 回调注入 `Delay_SetMsHook()`）—— 决策 53 |

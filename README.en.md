@@ -61,11 +61,12 @@ python tools/fw_prep/run_all_tests.py     # all of the below, summarized
 
 | Check | What it proves |
 |---|---|
-| 4 native unit-test suites (protocol 117 / sensor 1235 / patrol 67 / param 24 asserts) | algorithms and the decoder are correct on a PC |
+| 4 native unit-test suites (protocol 117 / sensor 1235 / patrol 76 / param 29 asserts) | algorithms and the decoder are correct on a PC |
 | Shared protocol vectors ([`docs/protocol/test_vectors.json`](docs/protocol/test_vectors.json)) | Python reference ↔ host C++ ↔ firmware all agree (CRC 4 + frames 16 + streams 6) |
 | `check_vector_table.py` / `check_isr_safety.py` / `pin_check.py` | interrupt vectors, "no RTOS API inside ISRs", pin map vs. the finished PCB |
+| `make strict` (conversion/shadow/missing-prototype warnings) | 19 self-written / hand-modified files compile with **0 warnings** |
 
-Current footprint: **Flash 64,920 B (6.2 %) / RAM 32,800 B (25.0 %)**.
+Current footprint: **Flash 65,724 B (6.27 %) / RAM 32,816 B (25.04 %)** (measured 2026-10-13).
 
 ## PC-side tuning tool
 
