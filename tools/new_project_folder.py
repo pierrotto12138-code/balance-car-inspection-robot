@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
-"""把板 '改' 复制成一个新的文件夹格式工程：26测控系统设计"""
+"""把板 '改' 复制成一个新的文件夹格式工程：26测控系统设计
+
+工程位置**不写死**：默认取当前用户的立创EDA 工程目录
+（``~/Documents/LCEDA-Pro/projects``），也可用环境变量 ``LCEDA_PROJECTS`` 指定。
+"""
 import io, os, json, shutil, datetime
 
-SRC = r'C:\Users\Pierrot\Documents\LCEDA-Pro\projects\参考01_copy'
-DST = r'C:\Users\Pierrot\Documents\LCEDA-Pro\projects\26测控系统设计'
+PROJECTS = os.environ.get("LCEDA_PROJECTS") or os.path.join(
+    os.path.expanduser("~"), "Documents", "LCEDA-Pro", "projects")
+SRC = os.path.join(PROJECTS, '参考01_copy')
+DST = os.path.join(PROJECTS, '26测控系统设计')
 NAME = '26测控系统设计'
 
 print('=== 1) 建目录 ===')

@@ -23,6 +23,7 @@
 """
 import os
 import re
+from toolchain import arm_tool
 import subprocess
 import sys
 
@@ -49,9 +50,10 @@ def isr_names():
     elf = os.path.join(FW, "build", "MiniBalance.elf")
     mp = os.path.join(FW, "build", "MiniBalance.map")
     name_by_addr = {}
-    # nm 给出符号地址
+    # nm 给出符号地址（交叉工具链由 toolchain.py 探测）
+    _nm = arm_tool("nm") or "arm-none-eabi-nm"
     try:
-        out = subprocess.run(["arm-none-eabi-nm", "-n", elf], stdout=subprocess.PIPE,
+        out = subprocess.run([_nm, "-n", elf], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT).stdout.decode("utf-8", "replace")
     except OSError:
         return {}

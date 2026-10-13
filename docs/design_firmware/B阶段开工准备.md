@@ -55,16 +55,16 @@
 | 文件编码 | **GBK**（不是 UTF-8）—— 直接改会造成中文注释乱码，需统一转码 |
 | 编译器耦合 | `SYSTEM/usart/usart.c` 用 ARMCC 专有 `#pragma import(__use_no_semihosting)` / `_sys_exit` / `FILE`；`SYSTEM/sys/sys.c` 用 ARMCC 专有 `__asm void MSR_MSP()` |
 
-### 2.3 本机工具链（实测）
+### 2.3 开发环境与工具链（实测）
 
 | 工具 | 状态 |
 |---|---|
-| `arm-none-eabi-gcc` | ✅ **14.3.1**（`D:\0_APP\STM32CubeCLT_1.22.0\GNU-tools-for-STM32\bin`） |
+| `arm-none-eabi-gcc` | ✅ **14.3.1**（随 STM32CubeCLT 一起安装；**装在哪都行**，只要其 `bin` 在 `PATH` 上，或用 `make PREFIX=`、环境变量 `FW_ARM_BIN` 指定 —— 见 `tools/fw_prep/toolchain.py`） |
 | `make` / `cmake` / `ninja` | ✅ 4.4 / 4.3.1 / 1.13（同在 CubeCLT） |
 | `STM32_Programmer_CLI` | ✅ 2.23（可烧录/读回校验） |
 | ST-Link 调试器 | ✅ 可借（决策 22），`STLink-gdb-server` 在 CubeCLT 内 |
-| **Keil MDK** | ❌ **本机不装**，且按决策 34 **不作为交付形态**（交付 = GCC 工程 + `.hex`） |
-| STM32CubeMX | ⚠️ 已装（`D:\0_APP\CubeMx`），**但本阶段不建议用** —— 见 §五 决策点 3 |
+| **Keil MDK** | ❌ **不使用**，且按决策 34 **不作为交付形态**（交付 = GCC 工程 + `.hex`） |
+| STM32CubeMX | ⚠️ 已装于任意目录，**但本阶段不建议用** —— 见 §五 决策点 3 |
 | 网络 | ✅ GitHub 可达（已实测 clone / raw 下载成功） |
 | **烧录路径** | ✅ **控制板板载 `CH340G` + MicroUSB，且带 `DTR/RTS` 自动 ISP 电路**；串口接 **USART1 = `PA9`/`PA10`**（读控制板原理图 PDF 核实）。厂商资料里自带 **`FlyMcu`** 与 `OBJ/Minibalance.hex` → **"hex + FlyMcu 串口烧录"本来就是这块板子的原厂流程** |
 
@@ -80,7 +80,7 @@
 | 烧录方式 | 做法 | 备注 |
 |---|---|---|
 | **① 串口 ISP（FlyMcu）** | 控制板 **MicroUSB** 线接电脑 → 选 CH340 虚拟串口 → 载入 `.hex` → 开始编程 | 板上 `DTR/RTS` 经 `Q1(8550)` 驱动 **BOOT0**，属**自动 ISP**：正常不用手动拨跳线；若进不去 BootLoader，再手动把 BOOT0 拉高后复位 |
-| ② SWD（ST-Link） | `STM32_Programmer_CLI -c port=SWD -d firmware\build\xxx.hex -v` | 本机已有 `STM32_Programmer_CLI 2.23` + 可借 ST-Link；**下载后可 `-v` 校验**，更适合调 PID 时的反复烧录 |
+| ② SWD（ST-Link） | `STM32_Programmer_CLI -c port=SWD -d firmware\build\xxx.hex -v` | 该命令行工具随 CubeCLT/CubeProgrammer 提供（实测 2.23），另有可借的 ST-Link；**下载后可 `-v` 校验**，更适合调 PID 时的反复烧录 |
 
 > ⚠️ 用 ST-Link/SWD 时不要占 `PA13`/`PA14`；用串口 ISP 时 `PA9/PA10` 即被占用（原本是 DataScope 调试口，二选一）。
 
@@ -180,7 +180,7 @@ text 152 B / data 0 B / bss 1544 B
 |---|---|---|---|
 | **1** | **交付与构建形态** | ✅ **已定（决策 34）**：本地 **GCC + Makefile** 开发，**保证出 `.hex`**（配 FlyMcu）；~~Keil `.uvprojx`~~ **暂不考虑**（用户 2026-10-09 明确） | 日常可编译、可复跑核验；报告里只写 GCC 工具链，不必解释 Keil |
 | **2** | **FreeRTOS 是否 vendor 入库** | ✅ **已定（决策 35）**：内核 **V11.1.0** 源码放进 `firmware/Middlewares/FreeRTOS/` | 离线可编译、版本可复现（MIT，约 1–2 MB 源码） |
-| **3** | **是否用 STM32CubeMX** | 🔶 **建议不用**（待确认） —— 它生成 HAL 工程，与 FWLIB 基线混用会造成 RCC/中断向量/HAL 句柄两套体系并存；`docs/setup/我的准备清单.md` A1 写的"CubeMX 生成两个工程"**已与 FWLIB 基线决策不符**，该条应作废 | 决定要不要装 F4 固件包（约 1 GB 下载） |
+| **3** | **是否用 STM32CubeMX** | 🔶 **建议不用**（待确认） —— 它生成 HAL 工程，与 FWLIB 基线混用会造成 RCC/中断向量/HAL 句柄两套体系并存；`docs/setup/开发环境准备清单.md` A1 写的"CubeMX 生成两个工程"**已与 FWLIB 基线决策不符**，该条应作废 | 决定要不要装 F4 固件包（约 1 GB 下载） |
 | **4** | **红外避障的固件处置** | 🔶 **建议**：写驱动但**编译期默认关闭**（实物 `J11`/`J14` 是 **DNP，未装排针**） | 任务书写明"HC-SR04 **与红外模块**负责避障与循迹"——**报告里要说明"座已预留、模块未装"**，别让验收时对不上 |
 
 > 另有 2 个**留给 B/C 会签**的小项（不阻塞开工）：
@@ -300,8 +300,8 @@ text 152 B / data 0 B / bss 1544 B
 | `firmware/App/Comms/crc16.c/.h` | CRC-16/MODBUS，并额外提供**增量版** `crc16_modbus_update()` | 增量版让解帧时**不必为"命令字+长度+数据"再开一块拼接缓冲**（省 259 B RAM，且没有 static 状态） |
 | `firmware/App/Comms/protocol.c/.h` | 帧常量、命令字、阶段/事件/档位枚举 + `Proto_Encode()` + `Proto_Feed()` 流式解帧状态机 + 8 组字段打包/解包 | ① 时间基**由调用方注入**（`nowMs` 参数）→ 100 ms 超时逻辑**能在 PC 上被测到**；② 解帧用**回调投递**，不动态分配；③ 容错规则与上位机逐条一致（`AA AA 55`、校验失败丢整帧但保留 0xAA 候选、长度超限整帧作废） |
 | `firmware/App/Comms/ringbuf.c/.h` | **SPSC 环形缓冲**（512 B，2 的幂）：中断里 `Push`、任务里 `Pop`，满时丢新字节并计数 | 单生产者/单消费者 + 16 位对齐读写原子 → **无需关中断**；索引最后发布，避免消费者看到半成品 |
-| `firmware/tests/proto_test.c` | 原生（PC）单元测试：向量复现 + 超时/边界/环形缓冲 | **不依赖 STM32**（三个模块只 include `<stdint.h>`），因此可以在本机秒级回归 |
-| `tools/fw_prep/run_proto_test.py` | 用本机 MinGW gcc 编译并运行上面那套测试 | 一条命令跑完，失败数 = 退出码 |
+| `firmware/tests/proto_test.c` | 原生（PC）单元测试：向量复现 + 超时/边界/环形缓冲 | **不依赖 STM32**（三个模块只 include `<stdint.h>`），因此可以在 PC 上秒级回归 |
+| `tools/fw_prep/run_proto_test.py` | 用 PC 端 gcc（自动探测，见 `toolchain.py`）编译并运行上面那套测试 | 一条命令跑完，失败数 = 退出码 |
 
 ### 11.2 三方交叉验证结果（协议冻结的核心证据）
 

@@ -7,11 +7,17 @@
 """
 import os, re, subprocess, sys, glob
 
-BASE = r"D:\260921Task\Base\高配版平衡小车附送资料（STM32F405RGT6）\MiniBalanceV5.0【高配版】平衡小车库函数版源码（卡尔曼滤波版）"
+# 厂商基线源码目录：默认取"仓库根/Base/…"（Base/ 不进版本控制，需自行放入），
+# 也可用环境变量 FW_VENDOR_SRC 指向任意位置的同名目录。
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE = os.environ.get("FW_VENDOR_SRC") or os.path.join(
+    REPO, "Base", "高配版平衡小车附送资料（STM32F405RGT6）",
+    "MiniBalanceV5.0【高配版】平衡小车库函数版源码（卡尔曼滤波版）")
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUILD = os.path.join(HERE, "out")
-GCC = "arm-none-eabi-gcc"
-SIZE = "arm-none-eabi-size"
+from toolchain import arm_tool
+GCC = arm_tool("gcc") or "arm-none-eabi-gcc"
+SIZE = arm_tool("size") or "arm-none-eabi-size"
 
 CFLAGS = [
     "-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard",

@@ -24,8 +24,35 @@ import os
 import re
 import sys
 
-DEFAULT_PCB = (r"D:\260921Task\hardware\硬件工程_完工版_20261008_最终"
-               r"\pcb\PCB2.epcb2")
+# 默认取"仓库根/hardware/硬件工程_完工版_…"，也可用环境变量 FW_PCB_DIR 指定；
+# 目录名里的日期随快照变化，故按修改时间挑最新的一个（不写死任何绝对路径）。
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _default_pcb():
+    """在 <仓库根>/hardware 下找最新的完工快照，返回其中的 PCB2 文件路径。
+
+    FW_PCB_DIR 允许给"快照目录"或直接给"*.epcb2 文件"两种写法。
+    """
+    env = os.environ.get("FW_PCB_DIR")
+    if env:
+        if env.lower().endswith(".epcb2"):
+            return env
+        return os.path.join(env, "pcb", "PCB2.epcb2")
+
+    hw = os.path.join(REPO, "hardware")
+    cands = []
+    if os.path.isdir(hw):
+        for name in sorted(os.listdir(hw)):
+            p = os.path.join(hw, name, "pcb", "PCB2.epcb2")
+            if os.path.exists(p):
+                cands.append(p)
+    if not cands:
+        return os.path.join(hw, "硬件工程_完工版", "pcb", "PCB2.epcb2")
+    return max(cands, key=os.path.getmtime)
+
+
+DEFAULT_PCB = _default_pcb()
 
 # 电源网名规范化：PCB 侧带 POWER_ 前缀
 NET_ALIAS = {

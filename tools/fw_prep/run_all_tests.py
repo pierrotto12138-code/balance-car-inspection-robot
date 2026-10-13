@@ -15,6 +15,7 @@
 """
 import os
 import re
+from toolchain import arm_tool
 import subprocess
 import sys
 
@@ -54,7 +55,7 @@ def main():
         detail = "(未生成 elf)"
         elf = os.path.join(FW, "build", "MiniBalance.elf")
         if rc == 0 and os.path.exists(elf):
-            rc_sz, out_sz = run(["arm-none-eabi-size", elf])
+            rc_sz, out_sz = run([arm_tool("size") or "arm-none-eabi-size", elf])
             m = re.search(r"^\s*(\d+)\s+(\d+)\s+(\d+)", out_sz, re.M)
             if m:
                 detail = (f"text {m.group(1)} B + data {m.group(2)} B "

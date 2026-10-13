@@ -16,7 +16,10 @@ _spec = importlib.util.spec_from_file_location(
 nl = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(nl)
 
-PROJ = r"C:\Users\Pierrot\Documents\LCEDA-Pro\projects\参考01_copy"
+PROJ = os.environ.get("LCEDA_PROJECTS_REF") or os.path.join(
+    os.environ.get("LCEDA_PROJECTS") or os.path.join(
+        os.path.expanduser("~"), "Documents", "LCEDA-Pro", "projects"),
+    "参考01_copy")
 ORIG = os.path.join(PROJ, "sch", "Schematic1", "P1.esch2")   # "原"板（基线参照）
 REQUIRED = ["J5", "J7", "J9", "J10", "J11", "J13", "J14", "J15", "J17", "J18",
             "R10", "R11", "R12", "R13", "R14",

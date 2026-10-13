@@ -11,7 +11,7 @@
 **桥的启动**（EDA 需已打开、且装了 `Run API Gateway` 扩展）：
 
 ```powershell
-cd D:\260921Task\Base\easyeda-bridge\easyeda-api-skill
+cd <仓库根>/Base/easyeda-bridge/easyeda-api-skill
 node scripts/bridge-server.mjs        # 端口 49620
 ```
 
@@ -40,15 +40,27 @@ node scripts/bridge-server.mjs        # 端口 49620
 
 > 除 `vendor_baseline.py --apply`（写 `firmware/`）外，其余**只读**；输出物在 `fw_prep/out/` 或 `firmware/build/`（均已 gitignore）。
 
+> **🔧 换机器也能跑（不写死安装路径）**：固件相关的脚本通过 `fw_prep/toolchain.py` 自动找工具链。
+> 找不到时它会打印**可直接照抄**的指引，任选一种即可：
+> ```powershell
+> # PC 端 C 编译器（跑原生单测）
+> set FW_HOST_CC=C:\path\to\mingw64\bin\gcc.exe
+> # 交叉工具链（构建/核验固件镜像）
+> set FW_ARM_BIN=C:\path\to\GNU-tools-for-STM32\bin
+> ```
+> 或把对应 `bin` 目录直接加进 `PATH`。`make` 侧也可 `make PREFIX=/path/to/arm-none-eabi-`。
+> 自检：`python tools/fw_prep/toolchain.py`（打印当前找到的两个工具链）。
+
 | 文件 | 用途 | 何时用 |
 |---|---|---|
+| `fw_prep/toolchain.py` | **★ 工具链探测（通用化的关键）**：不写死任何安装路径 —— PC 端 C 编译器按 `FW_HOST_CC` → `PATH`(gcc/cc/clang) → `QTDIR` 下的 MinGW 查找；交叉工具链按 `FW_ARM_BIN` / `STM32CUBECLT` → `PATH` → 常见安装根查找。**装在哪都行**，并负责把编译器目录带进子进程 `PATH`（MinGW 的 `cc1` 需要同目录 DLL） | 其他脚本自动引用；换机器/报"找不到编译器"时先跑它自检 |
 | `fw_prep/vendor_baseline.py` | 把厂商基线源码 vendor 进 `firmware/`：**GBK→UTF-8** + 目录映射 + 报告转码失败 | 重建/升级 `firmware/` 时（`--apply` 才写盘） |
 | `fw_prep/gen_startup.py` | **生成 GCC 启动文件**：从 `User/stm32f4xx.h` 的 **IRQn 枚举**取名，98 个向量，杜绝手抄中断名 | 换芯片/改 CMSIS 头后 |
-| `fw_prep/smoke.py` | 固件开工体检：① arm-gcc 构建最小 F405 镜像并出 hex；② 逐文件编译基线源码，列出"需改造"清单 | 换机器 / 换工具链后 |
+| `fw_prep/smoke.py` | 固件开工体检：① arm-gcc 构建最小 F405 镜像并出 hex；② 逐文件编译基线源码，列出"需改造"清单。基线目录取 `<仓库根>/Base/…`，可用 `FW_VENDOR_SRC` 覆盖 | 换机器 / 换工具链后 |
 | `fw_prep/check_vector_table.py` | **★ 镜像核验**：栈顶/入口/`.isr_vector` 地址 + 关键中断（控制 ISR、USART2、TIM3/TIM8、SVC/PendSV/SysTick）逐条查**归属哪个 `.o`**（读 `.map`） | **每次 `make` 后** |
 | `fw_prep/check_isr_safety.py` | **★ 中断安全静态检查**：从 `.map` 取真正参与链接的 ISR → 定位源码函数体 → 搜索 FreeRTOS API 名单；并列出各中断抢占优先级与 syscall 阈值的关系 | **每次动中断或 RTOS 配置后**（这类错误编译器不报） |
 | `fw_prep/gen_test_vectors.py` | 生成协议**测试向量**（`docs/protocol/test_vectors.json/.tsv`：CRC 4 + 帧 12 + 流式 6），并检查协议文档声明的 N 与字段清单是否自洽 | 协议冻结前 / 改协议后 |
-| `fw_prep/run_proto_test.py` | **★ 固件协议层原生单元测试**：用本机 MinGW gcc 编译 `firmware/App/Comms/*` + `firmware/tests/proto_test.c` 并在 PC 上跑（117 条断言：向量复现 + 超时 + 边界 + 环形缓冲） | **每次改协议/解帧代码后** |
+| `fw_prep/run_proto_test.py` | **★ 固件协议层原生单元测试**：用 PC 端 gcc（自动探测）编译 `firmware/App/Comms/*` + `firmware/tests/proto_test.c` 并在 PC 上跑（117 条断言：向量复现 + 超时 + 边界 + 环形缓冲） | **每次改协议/解帧代码后** |
 | `fw_prep/gen_sensor_vectors.py` | 生成**传感器算法测试向量**（Python 独立实现 → `firmware/tests/sensor_vectors.csv`：GAS 280 / CALIB 2 / AVG 22 / CORR 7 / PARSE 9 / ALARM 5） | 改气体换算/补偿/标定/DHT11 后 |
 | `fw_prep/run_sensor_test.py` | **★ 传感器算法原生单元测试**：编译 `firmware/App/Sensor/{gas,dht11,sensor_report}.c` + `firmware/tests/sensor_test.c` 并跑（**1235 条断言**，含五级中间量比对、迟滞、饱和钳位） | **每次改传感器算法后** |
 | `fw_prep/run_param_test.py` | **★ PID 参数打包原生单测**：编译 `firmware/App/Control/param_pack.c` + `tests/param_test.c`（**24 条断言**：float 位型往返一致 / magic 与个数校验 / 离谱值拒绝 / 7 个 ID 无串位） | 改调参或持久化后 |

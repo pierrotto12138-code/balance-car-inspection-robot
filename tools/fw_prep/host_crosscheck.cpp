@@ -4,7 +4,7 @@
 // 为什么要这么做：AGENTS 铁律 23 —— 别用同一套假设验自己。
 //   Python 一份独立实现  +  C++ 一份真实实现  +  协议文档一份  三者一致，协议才可冻结。
 //
-// 编译（MinGW g++，本机 Qt 自带）：
+// 编译（任意 C++17 编译器：g++ / clang++ / MinGW 均可）：
 //   g++ -std=c++17 -I host/src/protocol tools/fw_prep/host_crosscheck.cpp
 //       host/src/protocol/crc16.cpp host/src/protocol/codec.cpp -o build/host_crosscheck.exe
 //

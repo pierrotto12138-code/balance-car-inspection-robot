@@ -25,9 +25,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 ELF = sys.argv[1] if len(sys.argv) > 1 else \
     os.path.join(ROOT, "firmware", "build", "MiniBalance.elf")
 
-OBJDUMP = "arm-none-eabi-objdump"
-NM = "arm-none-eabi-nm"
-READELF = "arm-none-eabi-readelf"
+# 交叉工具链由 toolchain.py 探测（PATH / FW_ARM_BIN / STM32CUBECLT），不写死安装路径
+from toolchain import arm_tool
+OBJDUMP = arm_tool("objdump")
+NM = arm_tool("nm")
+READELF = arm_tool("readelf")
 
 # 本项目实际依赖的中断（必须指向真处理函数）
 REQUIRED_IRQS = {

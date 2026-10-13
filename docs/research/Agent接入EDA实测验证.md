@@ -24,7 +24,7 @@
 
 | 组件 | 位置/版本 |
 |---|---|
-| EDA 客户端 | 立创EDA 专业版 **4.1.60**，`D:\0_APP\lceda-pro` |
+| EDA 客户端 | 立创EDA 专业版 **4.1.60**（安装目录各人不同） |
 | **扩展** | **`Run API Gateway`** —— 用户已在 EDA 内安装，并勾选「允许外部交互」+「显示在顶部菜单」 |
 | **Bridge 服务器** | 官方 `easyeda-api-skill` 仓库的 `scripts/bridge-server.mjs` |
 | Bridge 本地路径 | `Base/easyeda-bridge/easyeda-api-skill/` |

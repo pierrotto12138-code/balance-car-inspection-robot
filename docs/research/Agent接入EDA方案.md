@@ -213,7 +213,7 @@ prodocs.lceda.cn/cn/api/reference/pro-api.html          200  官方 API 文档
 
 | 项 | 值 |
 |---|---|
-| 立创EDA 专业版 | `D:\0_APP\lceda-pro`，Electron，版本 **4.1.60**，productName `JLCEDA_Pro` |
+| 立创EDA 专业版 | 安装目录（各人不同，例如 `C:\Program Files\lceda-pro`），Electron，版本 **4.1.60**，productName `JLCEDA_Pro` |
 | 用户目录 | `%USERPROFILE%\Documents\LCEDA-Pro\`（含 `projects`、`example-projects`、`libraries`） |
 | 本地示例工程格式 | 全部是 **`.eprj2`**（SQLite） |
 | 客户端认识的格式 | `app.js` 内出现 `eprj3`×24、`eprj2`×10、`epro`×4 → **新旧两代都认** |

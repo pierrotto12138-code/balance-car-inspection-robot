@@ -4,7 +4,7 @@
 
 做三件事：
     1. 确保测试向量是最新的（跑 gen_test_vectors.py）
-    2. 用本机自带的 MinGW gcc 把固件的协议模块 + 测试程序编译成 PC 可执行文件
+    2. 用 PC 上的 C 编译器（gcc/clang，自动探测）把固件的协议模块 + 测试程序编译成 PC 可执行文件
        （协议/crc/环形缓冲三个模块刻意只依赖 <stdint.h>，所以能脱离 STM32 编译）
     3. 运行并汇总结果
 
@@ -21,12 +21,9 @@ FW = os.path.join(ROOT, "firmware")
 OUT = os.path.join(ROOT, "tools", "fw_prep", "out")
 TSV = os.path.join(ROOT, "docs", "protocol", "test_vectors.tsv")
 
-# 找一个能用的 PC 端 C 编译器（MinGW 优先）
-CANDIDATES = [
-    r"D:\0_APP\QT\Tools\mingw1310_64\bin\gcc.exe",
-    "gcc",
-    "cc",
-]
+# PC 端 C 编译器：由 toolchain.py 自动探测（PATH / FW_HOST_CC / Qt 自带的 MinGW），
+# **不写死任何安装路径** —— 换台机器只要求 gcc 在 PATH 上，或设 FW_HOST_CC。
+from toolchain import host_cc, child_env
 
 SOURCES = [
     os.path.join(FW, "tests", "proto_test.c"),
@@ -37,21 +34,14 @@ SOURCES = [
 
 
 def find_cc():
-    for c in CANDIDATES:
-        try:
-            p = subprocess.run([c, "--version"], stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT)
-            if p.returncode == 0:
-                return c
-        except (OSError, subprocess.SubprocessError):
-            continue
-    return None
+    """返回 PC 端 C 编译器路径（见 toolchain.py 的查找顺序）。"""
+    return host_cc()
 
 
 def main():
     cc = find_cc()
     if cc is None:
-        print("找不到 PC 端 C 编译器（试过 MinGW gcc / gcc / cc）")
+        print("未找到 PC 端 C 编译器：请把 gcc/clang 加入 PATH，或用环境变量 FW_HOST_CC 指定（见 tools/fw_prep/toolchain.py）")
         return 2
 
     # 1) 刷新向量
@@ -68,7 +58,8 @@ def main():
            "-I", os.path.join(FW, "App", "Comms")] + SOURCES + ["-o", exe]
     print("编译：", " ".join(os.path.relpath(a, ROOT) if os.path.isabs(a) else a
                             for a in cmd))
-    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                       env=child_env(cc))
     out = p.stdout.decode("utf-8", "replace")
     if p.returncode != 0:
         print("=== 编译失败 ===")

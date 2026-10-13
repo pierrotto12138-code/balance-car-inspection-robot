@@ -8,7 +8,7 @@ EDA Pro 打开 `.eprj2` 时会把它转成 V3 日志格式并缓存到
 之后每次打开都直接读这份缓存，**所以改 .eprj2 文件不生效**。
 
 用法（务必先完全退出 EDA）：
-    python clear_eda_cache.py --project "D:\\260921Task\\hardware\\参考01.eprj2"
+    python clear_eda_cache.py --project "<仓库根>\\hardware\\参考01.eprj2"
     python clear_eda_cache.py --project "..." --list      # 只看不删
     python clear_eda_cache.py --project "..." --restore    # 从最近备份还原
 

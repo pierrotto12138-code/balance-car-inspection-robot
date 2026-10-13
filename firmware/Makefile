@@ -1,7 +1,7 @@
 # ============================================================================
 #  STM32F405RGT6 固件构建（GCC / arm-none-eabi，决策 34）
 #
-#  为什么不用 Keil：本机不装 Keil；CubeCLT 自带 arm-none-eabi-gcc 14.3，
+#  为什么不用 Keil：本项目不使用 Keil；CubeCLT 自带 arm-none-eabi-gcc 14.3，
 #  实测可构建 F405 镜像。烧录用板载 CH340G 走串口 ISP（FlyMcu 烧 .hex）。
 #
 #  常用：
@@ -15,7 +15,9 @@ TARGET   := MiniBalance
 BUILD    := build
 
 # ---- 工具链 ----
-PREFIX   := arm-none-eabi-
+# PREFIX 用 `?=` ：工具链装在哪都行，既可以用 PATH，
+# 也可以 `make PREFIX=/path/to/bin/arm-none-eabi-`（或 `make CC=... `）指定。
+PREFIX   ?= arm-none-eabi-
 CC       := $(PREFIX)gcc
 AS       := $(PREFIX)gcc -x assembler-with-cpp
 OBJCOPY  := $(PREFIX)objcopy

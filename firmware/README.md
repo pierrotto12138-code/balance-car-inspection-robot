@@ -9,12 +9,21 @@
 
 ---
 
-## 一、怎么编译（本机，不需要 Keil）
+## 一、怎么编译（PC 端，不需要 Keil）
 
-前置：`arm-none-eabi-gcc`（本机在 `D:\0_APP\STM32CubeCLT_1.22.0\GNU-tools-for-STM32\bin`，已在 PATH）。
+前置：`arm-none-eabi-gcc` 在 `PATH` 上（**装在哪个目录都可以**）。若不在 `PATH` 上，任选一种：
 
 ```powershell
-cd D:\260921Task\firmware
+make PREFIX=/path/to/GNU-tools-for-STM32/bin/arm-none-eabi-   # 直接给前缀
+$env:FW_ARM_BIN = "C:\path\to\GNU-tools-for-STM32\bin"        # 或用环境变量
+```
+
+`make` 的 `PREFIX` 用 `?=` 定义，因此可以被命令行/环境覆盖；各核验脚本会自动探测
+（顺序：`FW_ARM_BIN` / `STM32CUBECLT` 环境变量 → `PATH` → 常见安装根），
+详见 [`../tools/fw_prep/toolchain.py`](../tools/fw_prep/toolchain.py)。
+
+```powershell
+cd <仓库根>/firmware
 make                 # 产出 build/MiniBalance.elf + .hex + .bin + .map
 make size            # 看 Flash / RAM 占用
 make clean
@@ -135,7 +144,7 @@ firmware/
 | 5 | `Drivers/CMSIS/stm32f405rg_flash.ld` | **新写**链接脚本（Flash 1 MB / RAM 128 KB / CCM 64 KB，起始 `0x08000000`） | Keil 用分散加载文件，GCC 要 `.ld` |
 | 6 | `System/retarget/syscalls.c` | 新增 `_close/_fstat/_isatty/_lseek/_read/...` 空实现 | 消掉 `nosys.specs` 的链接警告 |
 | 7 | `User/FreeRTOSConfig.h`、`User/rtos_hooks.c` | 新增 | FreeRTOS 配置与故障钩子 |
-| 8 | `Makefile` | 新增（`USE_RTOS` 可切换） | 本机无 Keil，用 GCC 构建 |
+| 8 | `Makefile` | 新增（`USE_RTOS` 可切换、`PREFIX` 可覆盖） | 不使用 Keil，用 GCC 构建 |
 
 **未改动的部分（刻意）**：`App/Control/control.c` 里的 `EXTI15_10_IRQHandler`、
 `App/Filter`、`Drivers/BSP/*`、`App/Ui/show.c` 等**逻辑一行没动** —— 目的是先做到

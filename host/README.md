@@ -29,15 +29,15 @@
 
 工具链（均已就绪）：
 
-- Qt **6.11.2** MinGW 64-bit（`D:/0_APP/QT/6.11.2/mingw_64`）
-- MinGW **g++ 13.1.0**（`D:/0_APP/QT/Tools/mingw1310_64/bin`）
+- Qt **6.11.2** MinGW 64-bit（`<Qt 安装目录>/6.11.2/mingw_64`）
+- MinGW **g++ 13.1.0**（`<Qt 安装目录>/Tools/mingw1310_64/bin`，或任意 g++ ≥ 11）
 - CMake **4.3.1** + Ninja
 
 ```bash
 # 一次性配置
-export PATH="/d/0_APP/QT/Tools/mingw1310_64/bin:/d/0_APP/QT/Tools/Ninja:/d/0_APP/STM32CubeCLT_1.22.0/CMake/bin:/d/0_APP/QT/6.11.2/mingw_64/bin:$PATH"
+export PATH="<Qt 安装目录>/Tools/mingw1310_64/bin:<Qt 安装目录>/Tools/Ninja:<Qt 安装目录>/6.11.2/mingw_64/bin:$PATH"
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
-      -DCMAKE_PREFIX_PATH="D:/0_APP/QT/6.11.2/mingw_64"
+      -DCMAKE_PREFIX_PATH="<Qt 安装目录>/6.11.2/mingw_64"
 
 # 构建
 cmake --build build

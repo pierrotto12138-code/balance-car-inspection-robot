@@ -1,8 +1,20 @@
-"""Extract readable text from the submitted task book DOCX."""
+"""把一份 DOCX（例如任务书）里的可见文本抽出来，便于检索与引用。
+
+用法：
+    python tools/extract_taskbook.py <某个.docx>
+
+说明：任务书原件**不在本仓库**（含组员学号等个人信息，按仓库约定不入库），
+所以这个脚本要求显式给出路径；也可以放到自己本地任意位置。
+"""
+import sys
 import re
 import zipfile
 
-DOCX = r"D:\260921Task\docs\task\2026 测控系统综合设计任务书_1组.docx"
+if len(sys.argv) < 2:
+    print(__doc__)
+    raise SystemExit(2)
+
+DOCX = sys.argv[1]
 
 with zipfile.ZipFile(DOCX) as z:
     xml = z.read("word/document.xml").decode("utf-8", "replace")

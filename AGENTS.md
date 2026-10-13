@@ -25,7 +25,7 @@
 
 | 位置 | 说明 |
 |---|---|
-| **仓库根** | `D:\260921Task`（用 `pwd` 确认，不要假定） |
+| **仓库根** | 克隆到哪就是哪（用 `pwd` 确认，**不要假定**）；下文一律写作 `<仓库根>` |
 | **EDA 工程** | `%USERPROFILE%\Documents\LCEDA-Pro\projects\参考01_copy\`（**在仓库外**） |
 | 独立副本 | `…\projects\26测控系统设计\`（板「改」的副本，交作业用） |
 | 完工快照 | `hardware\硬件工程_完工版_20261008_最终\`（MD5 与工程一致） |
@@ -47,7 +47,7 @@
 
 | 位置（仓库外） | 内容 |
 |---|---|
-| `D:\260921Task_私有资料\` | 独立 git 仓库（纯本地），含：<br>· 全班分组统计表（**全班同学学号 + 姓名**）<br>· 本组任务书原件（含组员学号）<br>· 上届学生作业的原始工程与预览图<br>· 往届板解析与清理记录 |
+| `<仓库根>\..\260921Task_私有资料\` | 独立的本地 git 仓库（**与仓库同级、不进本仓库**，含：<br>· 全班分组统计表（**全班同学学号 + 姓名**）<br>· 本组任务书原件（含组员学号）<br>· 上届学生作业的原始工程与预览图<br>· 往届板解析与清理记录 |
 
 **`.gitignore` 里已加了三道保险**，即使误放回原位也不会被提交：
 
@@ -58,7 +58,7 @@ docs/task/*任务书_1组*
 ```
 
 **⚠️ 新增资料前先自问：里面有没有别人的学号、姓名、联系方式、原始作业？**
-有 → 放进 `D:\260921Task_私有资料\`，不要进本仓库。
+有 → 放进**与仓库同级的** `260921Task_私有资料\` 目录，不要进本仓库。
 
 ### ✍️ 写作约定：不写真名，用角色代号
 
@@ -93,7 +93,7 @@ docs/task/*任务书_1组*
 
 ```powershell
 # 1) 起桥（后台）
-cd D:\260921Task\Base\easyeda-bridge\easyeda-api-skill
+cd <仓库根>\Base\easyeda-bridge\easyeda-api-skill
 node scripts/bridge-server.mjs        # 端口 49620
 
 # 2) 健康检查（edaConnected 必须为 true）
@@ -211,7 +211,7 @@ $s = ($out | Out-String).Trim() -replace '^data:image/png;base64,',''
 ### 固件（B）—— 不需要 Keil
 
 ```powershell
-cd D:\260921Task\firmware
+cd <仓库根>\firmware
 make                     # 默认带 FreeRTOS；产出 build/MiniBalance.hex（给 FlyMcu 烧）
 make USE_RTOS=0          # 纯裸机对照（怀疑 RTOS 影响时序时二分定位）
 make size                # Flash / RAM 占用
@@ -236,7 +236,7 @@ python ..\tools\fw_prep\gen_test_vectors.py       # 协议测试向量（B/C 共
 - **改动前先看对应文档**：硬件 → `docs/design_hardware/`；协议 → `docs/protocol/`。
 - **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 46）。
 - **固件（B）相关**：开工准备与核验记录在 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)；
-  本地构建 = `arm-none-eabi-gcc` + Makefile（**必须产出 `.hex`**，用 FlyMcu 串口 ISP 烧录），**不考虑 Keil 交付**（决策 34）。
+  构建 = `arm-none-eabi-gcc` + Makefile（**必须产出 `.hex`**，用 FlyMcu 串口 ISP 烧录），**不考虑 Keil 交付**（决策 34）。
 - **新读者入口**：[`docs/文档索引.md`](docs/文档索引.md)；**接手**：[`docs/handoff/交接说明.md`](docs/handoff/交接说明.md)。
 - **历史过程写进 `docs/archive/`**，正文只留结论。
 
