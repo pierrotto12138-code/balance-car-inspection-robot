@@ -75,14 +75,16 @@ static void show_gas_page(void)
 		return;
 	}
 
-	/* 采样档位：预热 / 常态 1 Hz / 异常 5 Hz */
+	/* 采样档位：预热 / 常态 1 Hz / 异常 5 Hz
+	   ★ 三个档位文本都要给页码（x=120）让位：WARM 84..119、FAST 88..119、1HZ 96..119
+	     （`FAST` 原在 x=90 → 占 90..121，会压住页码 2 px；2026-10-09 按排布核算改为 x=88）*/
 	if (g.gear == PROTO_GEAR_WARMUP)
 	{
 		OLED_ShowString(84, 0, S("WARM"));
 	}
 	else if (g.gear == PROTO_GEAR_FAST)
 	{
-		OLED_ShowString(90, 0, S("FAST"));
+		OLED_ShowString(88, 0, S("FAST"));
 	}
 	else
 	{
