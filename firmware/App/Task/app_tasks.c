@@ -10,7 +10,6 @@
 #include "app_api.h"
 #include "sys.h"
 #include "protocol.h"
-#include "crc16.h"
 #include "comm_link.h"
 #include "gas.h"
 #include "dht11.h"
@@ -26,15 +25,14 @@
 
 /* ============================================================================
  * 厂商全局量（定义在 main.c / control.c）—— 只读，用于上报
- * ★ 这里只 **声明**，不定义；控制逻辑不受影响，也不改控制时序。
+ *
+ * ★ 2026-10-09 复查整改：这里**不再逐个 `extern`**。
+ *   这些量（Angle_Balance / Gyro_* / Encoder_* / Moto1,2 / Voltage / Distance /
+ *   Flag_Show / Flag_Stop / 以及 PID 增益与 Zhongzhi、Turn_Kp/Kd）都已由
+ *   `System/sys/sys.h` 统一声明，本文件通过 `#include "sys.h"` 拿到即可。
+ *   重复声明会触发 `-Wredundant-decls`（`make strict` 会报），
+ *   而且"同一个全局量在 N 个文件里各自声明"正是最容易改漏的地方。
  * ==========================================================================*/
-extern float Angle_Balance, Gyro_Balance, Gyro_Turn;
-extern int   Encoder_Left, Encoder_Right;
-extern int   Moto1, Moto2;
-extern int   Voltage;
-extern u32   Distance;
-extern u8    Flag_Show, Flag_Stop;
-extern float Balance_Kp, Balance_Kd, Velocity_Kp, Velocity_Ki, Zhongzhi;
 
 /* ============================================================================
  * 运行标志与任务心跳
@@ -300,6 +298,8 @@ static void comm_task(void *arg)
 				{
 					break;
 				}
+				/* 忽略返回值是有意的：解帧统计（成功/丢弃）由解帧器自己维护，
+				   已在 App_GetDiag().framesOk/framesDropped 里对外暴露 */
 				(void)Proto_Feed(&s_dec[li], buf, n, now, on_frame,
 				                 (void *)(uintptr_t)li);
 			}
@@ -378,11 +378,11 @@ static void comm_task(void *arg)
 
 		/* 5) 环境与气体（0x14）：按采样档位（1 Hz / 5 Hz）上报 */
 		{
-			uint32_t gasPeriod = (s_gear == PROTO_GEAR_FAST) ? 200u
-			                   : (s_gear == PROTO_GEAR_WARMUP ? 1000u : s_cfg.samplePeriodMs);
-			if (gasPeriod < 100u)
+			uint32_t gasPeriod = (s_gear == PROTO_GEAR_FAST) ? CFG_TX_ENV_FAST_MS
+			                   : (s_gear == PROTO_GEAR_WARMUP ? CFG_TX_ENV_WARMUP_MS : s_cfg.samplePeriodMs);
+			if (gasPeriod < CFG_TX_ENV_MIN_MS)
 			{
-				gasPeriod = 100u;
+				gasPeriod = CFG_TX_ENV_MIN_MS;
 			}
 			if ((uint32_t)(now - s_lastGasTxMs) >= gasPeriod)
 			{
@@ -423,11 +423,11 @@ static void gas_task(void *arg)
 
 		s_ticks[APP_TASK_GAS]++;
 
-		period = (s_gear == PROTO_GEAR_FAST) ? 200u
-		       : (s_gear == PROTO_GEAR_WARMUP ? 500u : s_cfg.samplePeriodMs);
-		if (period < 50u)
+		period = (s_gear == PROTO_GEAR_FAST) ? CFG_GAS_SAMPLE_FAST_MS
+		       : (s_gear == PROTO_GEAR_WARMUP ? CFG_GAS_SAMPLE_WARM_MS : s_cfg.samplePeriodMs);
+		if (period < CFG_GAS_SAMPLE_MIN_MS)
 		{
-			period = 50u;
+			period = CFG_GAS_SAMPLE_MIN_MS;
 		}
 
 		if ((uint32_t)(now - s_lastSampleMs) >= period)
@@ -662,48 +662,48 @@ int App_GetTelemetry(AppTelemetry *out)
 
 int App_GetGas(AppGasSnapshot *out)
 {
-	uint8_t ready = 0;
+	ProtoEnvGas env;                        /* 用 0x14 载荷组装器当**唯一实现**：
+	                                           就绪位与 ppm×10 的算法只有一处（见 sensor_report.c），
+	                                           避免"两套实现算同一件事"（2026-10-09 复查发现）*/
+	float tempC = 0.0f, humiRh = 0.0f;
+	uint8_t valid;
+	uint8_t comp;
 
 	if (out == 0)
 	{
 		return -1;
 	}
+
+	/* ★ 兑现 app_api.h 的承诺：getter 自带短临界区 ——
+	   本函数同时读 GasTask 写的气体通道与 TaskTask 写的档位，必须取一个一致的快照。 */
+	taskENTER_CRITICAL();
+
+	valid = s_dhtValid;
+	comp = (uint8_t)(s_cfg.tempCompEnable ? 1 : 0);
+	if (valid)
+	{
+		tempC = Dht11_TempC(&s_dht);
+		humiRh = Dht11_HumiRh(&s_dht);
+	}
+	SensorReport_FillEnvGas(&s_mq2, &s_mq135, &s_dht, valid, comp, s_gear, &env);
+
 	out->mq2Raw = s_mq2RawAvg;
 	out->mq135Raw = s_mq135RawAvg;
-	out->mq2PpmX10 = SensorReport_PpmToX10(s_mq2.ppm);
-	out->mq135PpmX10 = SensorReport_PpmToX10(s_mq135.ppm);
+	out->mq2PpmX10 = env.mq2PpmX10;
+	out->mq135PpmX10 = env.mq135PpmX10;
 	out->mq2Ratio = s_mq2.ratioAvg;
 	out->mq135Ratio = s_mq135.ratioAvg;
 	out->mq2R0 = s_mq2.r0;
 	out->mq135R0 = s_mq135.r0;
 	out->mq2Alarm = s_mq2.alarm;
 	out->mq135Alarm = s_mq135.alarm;
-	out->dhtValid = s_dhtValid;
-	if (s_dhtValid)
-	{
-		out->tempX10 = (int16_t)(Dht11_TempC(&s_dht) * 10.0f + 0.5f);
-		out->humiX10 = (uint16_t)(Dht11_HumiRh(&s_dht) * 10.0f + 0.5f);
-		ready |= PROTO_RDY_DHT11;
-		if (s_cfg.tempCompEnable)
-		{
-			ready |= PROTO_RDY_COMP;
-		}
-	}
-	else
-	{
-		out->tempX10 = 0;
-		out->humiX10 = 0;
-	}
-	if (s_mq2.r0 > 0.0f)
-	{
-		ready |= PROTO_RDY_MQ2;
-	}
-	if (s_mq135.r0 > 0.0f)
-	{
-		ready |= PROTO_RDY_MQ135;
-	}
-	out->readyBits = ready;
-	out->gear = s_gear;
+	out->dhtValid = valid;
+	out->tempX10 = valid ? (int16_t)(tempC * 10.0f + 0.5f) : 0;
+	out->humiX10 = valid ? (uint16_t)(humiRh * 10.0f + 0.5f) : 0;
+	out->readyBits = env.readyBits;
+	out->gear = env.gear;
+
+	taskEXIT_CRITICAL();
 	return 0;
 }
 
@@ -713,6 +713,8 @@ int App_GetPatrol(AppPatrolStatus *out)
 	{
 		return -1;
 	}
+	/* ★ 短临界区：s_patrol 由 TaskTask 写，这里可能在别的任务里被读（见 app_api.h 的约定） */
+	taskENTER_CRITICAL();
 	out->phase = s_patrol.phase;
 	out->taskId = s_patrol.taskId;
 	out->progress = s_patrol.progress;
@@ -720,6 +722,7 @@ int App_GetPatrol(AppPatrolStatus *out)
 	out->fault = s_patrol.fault;
 	out->safetyStop = s_patrol.safetyStop;
 	out->stopReason = s_patrol.stopReason;
+	taskEXIT_CRITICAL();
 	return 0;
 }
 
@@ -731,6 +734,9 @@ int App_GetDiag(AppDiag *out)
 	{
 		return -1;
 	}
+	/* ★ 短临界区：计数由中断在后台自增，任务心跳由各任务写 ——
+	   取一次一致快照，避免"任务心跳读了半拍"这类误判（排障时这两组数最容易被误信）。 */
+	taskENTER_CRITICAL();
 	out->rxBytesBt = CommLink_RxBytes(COMM_LINK_BT);
 	out->rxBytesWire = CommLink_RxBytes(COMM_LINK_WIRE);
 	out->rxDroppedBt = CommLink_RxDropped(COMM_LINK_BT);
@@ -743,9 +749,12 @@ int App_GetDiag(AppDiag *out)
 	{
 		out->taskTicks[i] = s_ticks[i];
 	}
+	out->tuningMode = s_tuningMode;
+	taskEXIT_CRITICAL();
+
+	/* 堆查询放在临界区外：`xPortGetFreeHeapSize()` 是普通函数调用，没必要在临界区里跑 */
 	out->heapFreeBytes = (uint32_t)xPortGetFreeHeapSize();
 	out->minEverFreeHeap = (uint32_t)xPortGetMinimumEverFreeHeapSize();
-	out->tuningMode = s_tuningMode;
 	return 0;
 }
 

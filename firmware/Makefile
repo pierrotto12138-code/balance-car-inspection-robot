@@ -104,7 +104,7 @@ OBJECTS += $(addprefix $(BUILD)/,$(notdir $(ASM_SOURCES:.S=.o)))
 vpath %.S $(sort $(dir $(ASM_SOURCES)))
 
 # ============================================================================
-.PHONY: all clean size flash
+.PHONY: all clean size flash strict
 
 all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin
 
@@ -135,6 +135,42 @@ size: $(BUILD)/$(TARGET).elf
 # ST-Link 下载（需要接 ST-Link；串口 ISP 请用 FlyMcu 载入 .hex）
 flash: $(BUILD)/$(TARGET).hex
 	STM32_Programmer_CLI -c port=SWD -d $< -v -rst
+
+# ----------------------------------------------------------------------------
+# 严格告警自检：只编**我们自研/手改**的文件，且把厂商目录用 -isystem 屏蔽掉
+#   —— 这样输出里剩下的每一条告警都是我们自己的责任。
+#   为什么单独一个目标：`-Wall -Wextra` 挡不住类型窄化、隐式符号转换、缺原型这类问题；
+#   而它们恰恰是最容易在换编译器/换优化等级时突然咬人的一类。
+#   参考：docs/design_firmware/编码规范.md
+# ----------------------------------------------------------------------------
+STRICT_WARN := -Wconversion -Wsign-conversion -Wshadow -Wcast-qual -Wdouble-promotion \
+               -Wundef -Wmissing-prototypes -Wstrict-prototypes -Wold-style-definition \
+               -Wredundant-decls -Wformat=2
+STRICT_SRC  := App/Task/app_tasks.c App/Task/patrol.c App/Task/odom.c \
+               App/Comms/protocol.c App/Comms/crc16.c App/Comms/ringbuf.c App/Comms/comm_link.c \
+               App/Sensor/gas.c App/Sensor/dht11.c App/Sensor/dht11_hw.c \
+               App/Sensor/sensor_report.c App/Sensor/sensor_adc.c \
+               App/Control/param_pack.c App/Control/param_store.c \
+               App/Ui/pages.c App/Ui/buzzer.c \
+               User/main.c User/rtos_hooks.c
+# 我们自己的头目录用 -I（要看到自己头文件里的问题）；厂商目录用 -isystem（屏蔽其告警）
+STRICT_INC  := $(foreach d,$(filter-out Drivers/% Middlewares/%,$(patsubst -I%,%,$(INCS))),-I$(d))
+STRICT_SYS  := $(foreach d,$(filter Drivers/% Middlewares/%,$(patsubst -I%,%,$(INCS))),-isystem $(d))
+
+strict:
+	@echo "=== 严格告警自检（$(words $(STRICT_SRC)) 个自研/手改文件；厂商头用 -isystem 屏蔽）==="
+	@fail=0; total=0; \
+	for f in $(STRICT_SRC); do \
+	  n=$$($(CC) -fsyntax-only $(CFLAGS) $(STRICT_WARN) $(STRICT_SYS) $(STRICT_INC) $$f 2>&1 \
+	        | grep -c 'warning:\|error:' || true); \
+	  if [ "$$n" != "0" ]; then echo "  [$$n 条] $$f"; \
+	    $(CC) -fsyntax-only $(CFLAGS) $(STRICT_WARN) $(STRICT_SYS) $(STRICT_INC) $$f 2>&1 \
+	      | grep 'warning:\|error:' | head -3 | sed 's/^/        /'; fail=1; fi; \
+	  total=$$((total + n)); \
+	done; \
+	echo "=== 合计 $$total 条 ==="; \
+	if [ "$$fail" = "0" ]; then echo "自研代码在严格告警下 0 条 ✅"; \
+	else echo "有告警，请按 docs/design_firmware/编码规范.md 处理 ❌"; exit 1; fi
 
 clean:
 	-rm -fR $(BUILD)

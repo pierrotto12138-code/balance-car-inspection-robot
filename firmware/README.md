@@ -26,6 +26,7 @@ $env:FW_ARM_BIN = "C:\path\to\GNU-tools-for-STM32\bin"        # 或用环境变�
 cd <仓库根>/firmware
 make                 # 产出 build/MiniBalance.elf + .hex + .bin + .map
 make size            # 看 Flash / RAM 占用
+make strict          # ★ 严格告警自检：**自研代码必须 0 条**（厂商头用 -isystem 屏蔽）
 make clean
 ```
 

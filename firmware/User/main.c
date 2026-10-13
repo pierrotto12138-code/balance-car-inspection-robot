@@ -17,7 +17,7 @@ float Show_Data_Mb;                         //全局显示变量，用于显示�
 u32 Distance;                               //超声波测距
 u8 delay_50,delay_flag,Bi_zhang=0,PID_Send,Flash_Send; //延时和调参等变量
 float Acceleration_Z;                       //Z轴加速度计  
-float Balance_Kp=300,Balance_Kd=1,Velocity_Kp=80,Velocity_Ki=0.4;//PID参数
+float Balance_Kp=300,Balance_Kd=1,Velocity_Kp=80,Velocity_Ki=0.4f;//PID参数
 u16 PID_Parameter[10],Flash_Parameter[10];  //Flash相关数组
 float Zhongzhi=1;                          //机械中值
 u32 Remoter_Ch1=1500,Remoter_Ch2=1500;      //航模遥控接收变量

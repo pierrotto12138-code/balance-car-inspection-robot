@@ -1,4 +1,5 @@
 #include "sensor_adc.h"
+#include "app_config.h"
 #include "adc.h"
 
 /*
@@ -75,7 +76,7 @@ uint16_t SensorAdc_Read(uint8_t ch)
 		uint32_t guard = 0;
 		while (ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == RESET)
 		{
-			if (++guard > 2000000u)      /* 指针异常时不死等 */
+			if (++guard > CFG_ADC_CONV_GUARD)      /* 指针异常时不死等 */
 			{
 				return 0;
 			}

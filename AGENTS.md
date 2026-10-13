@@ -15,7 +15,7 @@
 | 原理图（板「改」） | ✅ 完工 —— 104 元件 / 52 位号 / 65 网络 / 全有封装与立创料号 / DRC 致命 0 |
 | PCB（板「改」） | ✅ 完工 —— 523 走线段 / 76 过孔 / **双面实心 GND 铺铜** / **DRC 零错误零未连接** |
 | 打样与采购 | ✅ **全部到货，正在焊接**（2026-10-09 确认）|
-| 固件 B / 上位机界面 C | 🔶 **B：P0~P5（离线部分）完成 + 复查/接口完善**（GCC 构建出 `.hex`；协议 117 + 传感器 1235 + 状态机 76 + 调参 24 条断言全过；四任务已跑起来、程序说明文档已出 → [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)）；C 待推进 |
+| 固件 B / 上位机界面 C | 🔶 **B：P0~P5（离线部分）完成 + 复查/接口完善**（GCC 构建出 `.hex`；协议 117 + 传感器 1235 + 状态机 76 + 调参 29 条断言全过；四任务已跑起来、程序说明文档已出 → [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)）；C 待推进 |
 
 **⚠️ 现在不要动 EDA 工程**，除非用户明确要求。板子已下单，改动会引入版本混乱。
 
@@ -216,13 +216,14 @@ cd <仓库根>\firmware
 make                     # 默认带 FreeRTOS；产出 build/MiniBalance.hex（给 FlyMcu 烧）
 make USE_RTOS=0          # 纯裸机对照（怀疑 RTOS 影响时序时二分定位）
 make size                # Flash / RAM 占用
+make strict              # ★ 严格告警自检（自研代码须 0 条；见 docs/design_firmware/编码规范.md）
 
 # 离线核验（不需要板子）
 python ..\tools\fw_prep\run_all_tests.py          # ★★ 一键跑完下面全部并汇总（提交前必跑）
 python ..\tools\fw_prep\run_proto_test.py          # ★ 协议层原生单测（117 条断言，PC 上跑）
 python ..\tools\fw_prep\run_sensor_test.py        # ★ 传感器算法原生单测（1235 条断言）
 python ..\tools\fw_prep\run_patrol_test.py        # ★ 巡检状态机原生单测（76 条断言）
-python ..\tools\fw_prep\run_param_test.py         # ★ PID 参数打包原生单测（24 条断言）
+python ..\tools\fw_prep\run_param_test.py         # ★ PID 参数打包原生单测（29 条断言）
 python ..\tools\fw_prep\tune.py --selftest          # ★ 有线调参工具自检（PC 侧独立实现，比对冻结向量）
 python ..\tools\fw_prep\check_vector_table.py     # ★ 向量表 + 关键中断归属（读 .map）
 python ..\tools\fw_prep\check_isr_safety.py       # ★ 中断安全：ISR 不得调用 FreeRTOS API（编译器不报，上板才炸）
@@ -236,7 +237,7 @@ python ..\tools\fw_prep\gen_test_vectors.py       # 协议测试向量（B/C 共
 
 - **文档中文，工程目录英文。**
 - **改动前先看对应文档**：硬件 → `docs/design_hardware/`；协议 → `docs/protocol/`。
-- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 50）。
+- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 52）。
 - **固件（B）相关**：开工准备与核验记录在 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)；
   构建 = `arm-none-eabi-gcc` + Makefile（**必须产出 `.hex`**，用 FlyMcu 串口 ISP 烧录），**不考虑 Keil 交付**（决策 34）。
 - **新读者入口**：[`docs/文档索引.md`](docs/文档索引.md)；**接手**：[`docs/handoff/交接说明.md`](docs/handoff/交接说明.md)。

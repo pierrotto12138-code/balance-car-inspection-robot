@@ -8,9 +8,9 @@
  * ★ "参数表 ↔ 厂商全局量"的同步放在本文件（STM32 侧），
  *   这样 param_pack.c 保持纯逻辑、可在 PC 上单测。 */
 
-/* 厂商全局量（定义在 main.c / control.c）*/
-extern float Balance_Kp, Balance_Kd, Velocity_Kp, Velocity_Ki, Zhongzhi;
-extern float Turn_Kp, Turn_Kd;
+/* 厂商全局量（定义在 main.c / control.c）由 `sys.h` 统一声明 ——
+   这里不再各自 `extern`，否则会触发 -Wredundant-decls（2026-10-09 复查整改）。
+   `Turn_Kp`/`Turn_Kd` 是决策 44 新增的全局量，也已并入 sys.h。*/
 
 static ParamSet s_params;
 
@@ -71,7 +71,10 @@ int ParamStore_Save(void)
 	}
 	STMFLASH_Write(CFG_PARAM_FLASH_ADDR, words, PARAM_WORDS + 4);
 
-	/* 回读校验：写 Flash 有失败可能，这里当场确认，避免"以为存了" */
+	/* 回读校验：写 Flash 有失败可能，这里当场确认，避免"以为存了"。
+	   ★ 2026-10-09 复查发现：这里原先只 `Unpack` 一次、**从未与 `s_params` 比对** ——
+	     等于"看起来验证了、其实没有"（正是 AGENTS 铁律 29 说的那类错）。
+	     现在逐字段比对，内容不一致就明确返回失败。*/
 	{
 		static uint32_t check[PARAM_WORDS + 4];
 		ParamSet verify;
@@ -79,6 +82,10 @@ int ParamStore_Save(void)
 		if (ParamPack_Unpack(check, PARAM_WORDS + 4, CFG_PARAM_MAGIC, &verify) != 0)
 		{
 			return -1;
+		}
+		if (!ParamPack_Equal(&verify, &s_params))
+		{
+			return -1;                      /* 读回来的 ≠ 刚写下去的 → 报失败，别让调用方以为成功 */
 		}
 	}
 	return 0;

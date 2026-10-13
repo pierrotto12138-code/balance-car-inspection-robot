@@ -64,4 +64,8 @@ uint16_t ParamPack_Pack(const ParamSet *p, uint32_t magic, uint32_t *words, uint
 int      ParamPack_Unpack(const uint32_t *words, uint16_t capWords,
                           uint32_t magic, ParamSet *out);
 
+/* 两组参数是否**逐字段完全相同**（给"写 Flash 后当场回读校验"用，见 param_store.c）。
+   返回 1 = 相同，0 = 不同。 */
+int      ParamPack_Equal(const ParamSet *a, const ParamSet *b);
+
 #endif /* __PARAM_PACK_H */

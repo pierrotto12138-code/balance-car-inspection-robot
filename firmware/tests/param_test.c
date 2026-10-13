@@ -134,6 +134,25 @@ int main(void)
 		ok(allOk, "7 个参数逐个写入后应能逐个读回（无串位）");
 	}
 
+	/* ⑦ ParamPack_Equal：给"写 Flash 后当场回读校验"用的比较函数
+	      （2026-10-09 复查发现 ParamStore_Save 原先只 Unpack、从不比对 → 属于假校验）*/
+	{
+		ParamSet p, q;
+		ParamPack_Default(&p);
+		q = p;
+		ok(ParamPack_Equal(&p, &q) == 1, "两组完全相同的参数应判为相同");
+		q.balanceKp += 0.01f;
+		ok(ParamPack_Equal(&p, &q) == 0, "只有 1 个字段不同也必须判为不同（逐字段比较）");
+		q = p;
+		q.turnKd += 1.0e-6f;
+		ok(ParamPack_Equal(&p, &q) == 0, "极小差异也要被发现（不设容差）");
+		ok(ParamPack_Equal(&p, 0) == 0, "空指针应判为不同（防御）");
+		(void)ParamPack_Pack(&p, MAGIC, words, PARAM_WORDS + 4);
+		ok(ParamPack_Unpack(words, PARAM_WORDS + 4, MAGIC, &q) == 0 &&
+		   ParamPack_Equal(&p, &q) == 1,
+		   "打包→解包后应与原参数相同（这是回读校验能成立的前提）");
+	}
+
 	printf("\n=== 结果：通过 %d 条，失败 %d 条 ===\n", g_pass, g_fail);
 	return g_fail;
 }

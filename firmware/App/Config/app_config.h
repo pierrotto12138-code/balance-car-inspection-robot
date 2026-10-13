@@ -50,12 +50,21 @@
 #define CFG_TX_HEARTBEAT_MS   200    /* 0x1F：5 Hz */
 #define CFG_TX_EVENT_IMMEDIATE  1    /* 事件触发即发 */
 
+/* 0x14（环境与气体）上行周期：跟随采样档位 */
+#define CFG_TX_ENV_FAST_MS    200    /* 异常档 5 Hz */
+#define CFG_TX_ENV_WARMUP_MS 1000    /* 预热档 1 Hz */
+#define CFG_TX_ENV_MIN_MS     100    /* 下限（防止 0x23 把采样周期设得过小把链路灌满）*/
+
 /* ============================================================================
  * 四、采样与研判
  * ==========================================================================*/
 #define CFG_GAS_ADC_AVG          8     /* 每次采样做几次 ADC 平均 */
 #define CFG_GAS_CALIB_SAMPLES   60     /* 清洁空气标定累加次数（预热期 2 Hz → 约 30 s）*/
 #define CFG_DHT_PERIOD_MS     1000     /* DHT11 最快 1 Hz */
+#define CFG_GAS_SAMPLE_FAST_MS 200     /* 异常档采样周期：5 Hz */
+#define CFG_GAS_SAMPLE_WARM_MS 500     /* 预热期采样周期：2 Hz */
+#define CFG_GAS_SAMPLE_MIN_MS   50     /* 采样周期下限（0x23 可改采样周期，防止设得过小）*/
+#define CFG_ADC_CONV_GUARD 2000000u    /* ADC"等 EOC"的忙等上限：硬件异常时不死等 */
 
 /* 协议 §4.1 的默认巡检参数（可被 0x23 覆盖）*/
 /* ★ 告警阈值怎么定的（2026-10-09 定值；可被 0x23 在线改）

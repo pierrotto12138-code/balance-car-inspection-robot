@@ -120,3 +120,19 @@ int ParamPack_Unpack(const uint32_t *words, uint16_t capWords,
 	out->turnKd = vals[6];
 	return 0;
 }
+
+int ParamPack_Equal(const ParamSet *a, const ParamSet *b)
+{
+	if (a == 0 || b == 0)
+	{
+		return 0;
+	}
+	/* 逐字段比较（不用 memcmp：结构体的对齐填充位内容不确定；逐字段也更可解释）*/
+	return (a->balanceKp == b->balanceKp &&
+	        a->balanceKd == b->balanceKd &&
+	        a->velocityKp == b->velocityKp &&
+	        a->velocityKi == b->velocityKi &&
+	        a->zhongzhi == b->zhongzhi &&
+	        a->turnKp == b->turnKp &&
+	        a->turnKd == b->turnKd) ? 1 : 0;
+}

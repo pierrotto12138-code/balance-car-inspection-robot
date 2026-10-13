@@ -28,7 +28,9 @@ extern int Moto1,Moto2;                                     //电机PWM变量 �
 extern u8 Flag_Qian,Flag_Hou,Flag_Left,Flag_Right,Flag_sudu; //蓝牙遥控相关的变量
 extern u8 Flag_Stop,Flag_Show,Flag_Hover;                    //停止标志位和 显示标志位 默认停止 显示打开
 extern int Voltage,Voltage_Zheng,Voltage_Xiao;                //电池电压采样相关的变量
-extern float Roll,Angle_Balance,Gyro_Balance,Gyro_Turn;           //平衡倾角 平衡陀螺仪 转向陀螺仪
+/* ★ B 2026-10-09：`Roll` 从本行移出 —— 它由 `MPU6050.h` 声明，两处重复会触发
+   `-Wredundant-decls`（`make strict` 会报）。用到 `Roll` 的 control.c 本来就 include `MPU6050.h`。*/
+extern float Angle_Balance,Gyro_Balance,Gyro_Turn;           //平衡倾角 平衡陀螺仪 转向陀螺仪
 extern float Show_Data_Mb,Angle_Flash;                       //全局显示变量，用于显示需要查看的数据
 extern int Temperature;
 extern u32 Distance;                                           //超声波测距
@@ -37,6 +39,9 @@ extern float Acceleration_Z;
 extern float Balance_Kp,Balance_Kd,Velocity_Kp,Velocity_Ki;
 extern u16 PID_Parameter[10],Flash_Parameter[10];
 extern float Zhongzhi;
+/* ★ B 新增（决策 44）：转向环增益原本是 turn() 里的局部常量，提为全局才能用 0x24 在线调。
+   在这里统一声明，App 层就不必各自写 `extern`（避免多处重复声明，见编码规范）。*/
+extern float Turn_Kp,Turn_Kd;
 extern u32 Remoter_Ch1,Remoter_Ch2; 		
 	 
 //位带操作,实现51类似的GPIO控制功能
