@@ -79,3 +79,8 @@ void Board_CapturePidParams(float *balanceKp, float *balanceKd,
 	if (turnKp != 0)     { *turnKp     = Turn_Kp;     }
 	if (turnKd != 0)     { *turnKd     = Turn_Kd;     }
 }
+
+void Board_LedSet(uint8_t on)
+{
+	LED = (on != 0) ? 0 : 1;        /* ★ 低电平点亮：on=1 → 引脚置 0 */
+}

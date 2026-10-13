@@ -8,7 +8,6 @@
 
 #include "app_config.h"
 #include "app_api.h"
-#include "sys.h"
 #include "protocol.h"
 #include "comm_link.h"
 #include "gas.h"
@@ -27,11 +26,11 @@
 /* ============================================================================
  * 厂商全局量（定义在 main.c / control.c）—— 只读，用于上报
  *
- * ★ 2026-10-13（P2 结构整改）：App 层**只允许通过 `board_state.h` 访问厂商全局量**。
- *   `sys.h` 仍然保留，但只用它的**板级类型与位带宏**（`u8`、`LED`）；
- *   业务数据一律走 board_state 出口：姿态/运动/电压 → `Board_ReadRaw()`，
- *   停止标志 → `Board_WriteVendorStop()`，PID 增益同步在 `param_store.c`（同样走 board_state）。
- *   这样"同一个全局量在 N 个文件里各自声明/各自读"的问题被彻底关进一个文件里。
+ * ★ 2026-10-13（P2 结构整改）：App 层**只允许通过 `board_state.h` 访问厂商全局量**，
+ *   连厂商的类型与位带宏（`u8`、`LED`）也不再直接用 —— 本文件因此**不再 include `sys.h`**：
+ *     姿态/运动/电压 → `Board_ReadRaw()`；停止标志 → `Board_WriteVendorStop()`；
+ *     板载 LED     → `Board_LedSet()`；PID 增益同步在 `param_store.c`（同样走 board_state）。
+ *   这样"同一个全局量/板级细节在 N 个文件里各自出现"的问题被彻底关进一个文件里。
  * ==========================================================================*/
 
 /* ============================================================================
@@ -44,7 +43,7 @@ static volatile int s_msHookInstalled = 0;
    中断据此强制 Flag_Stop=1 —— 这样"500 ms 失联 / 急停 / 硬件故障"才真的会停车。
    （此前 `Patrol_MotorsDisabled()` 的结果没有任何地方使用：锁存只停在状态机里，
      电机照转 —— 这是本轮复查抓到的最严重问题。）*/
-volatile u8 App_MotorDisable = 0;
+volatile uint8_t App_MotorDisable = 0;
 
 unsigned long App_TaskTicks(int idx)
 {
@@ -614,10 +613,10 @@ void App_Start(void)
 	s_msHookInstalled = 1;
 	vTaskStartScheduler();
 
-	/* 调度器启动失败（通常是堆不够）：LED 常亮，便于调试器定位 */
+	/* 调度器启动失败（通常是堆不够）：LED 常亮 + 死循环，便于调试器定位 */
 	for (;;)
 	{
-		LED = 1;
+		Board_LedSet(1);
 	}
 }
 

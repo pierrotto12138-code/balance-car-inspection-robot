@@ -50,6 +50,13 @@ void Board_ReadRaw(BoardRawState *out);
 uint8_t Board_ReadVendorStop(void);
 void    Board_WriteVendorStop(uint8_t on);
 
+/* ---- 板载 LED（PB13，厂商位带宏 `LED`）----
+ * 为什么也放这一层：`LED` 是厂商 `led.h` 里的**位带宏**，业务代码直接用它会
+ * 把"板级细节"漏进任务层（P2 结构整改的最后一块）；
+ * 而且 LED 是**低电平点亮**，容易接反 —— 这里用 `on` 的语义包一层，读代码的人不必记极性。
+ * `Led_Flash()` 的闪烁节奏仍由厂商 `control.c` 的中断负责，这里只处理"常亮/常灭"这种状态。*/
+void Board_LedSet(uint8_t on);
+
 /* ---- PID 参数：参数表 ↔ 厂商全局量 的双向同步 ----
  * `Set*` 写进厂商全局量后，控制中断下一拍就能用到（对齐 float 写是原子的）。*/
 void Board_SyncPidParams(float balanceKp, float balanceKd,
