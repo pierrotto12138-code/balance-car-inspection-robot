@@ -1,0 +1,29 @@
+# 统一换行符：仓库里一律 LF（跨平台一致，也消除 Windows 上每次提交的 CRLF 警告）
+* text=auto eol=lf
+
+# 这些文件**必须**保持原样，不能被换行符转换破坏
+*.hex   -text
+*.bin   -text
+*.elf   -text
+*.png   -text
+*.jpg   -text
+*.jpeg  -text
+*.pdf   -text
+*.xlsx  -text
+*.zip   -text
+
+# 明确按文本处理的源码/文档（便于 diff 与 blame）
+*.c      text eol=lf
+*.h      text eol=lf
+*.cpp    text eol=lf
+*.S      text eol=lf
+*.ld     text eol=lf
+*.mk     text eol=lf
+Makefile text eol=lf
+*.py     text eol=lf
+*.js     text eol=lf
+*.ps1    text eol=lf
+*.md     text eol=lf
+*.json   text eol=lf
+*.tsv    text eol=lf
+*.csv    text eol=lf

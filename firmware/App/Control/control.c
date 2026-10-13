@@ -2,6 +2,9 @@
 #include "filter.h"	
 #include "MPU6050.h"
 #include "inv_mpu.h"
+#ifdef USE_FREERTOS
+#include "pages.h"          /* USER 按键双击切 OLED 页（只改一个 volatile 变量，中断安全）*/
+#endif
   /**************************************************************************
 作者：平衡小车之家
 我的淘宝小店：http://shop114407458.taobao.com/
@@ -10,6 +13,15 @@ int Balance_Pwm,Velocity_Pwm,Turn_Pwm;
 u8 Flag_Target;
 u32 Flash_R_Count;
 int Voltage_Temp,Voltage_Count,Voltage_All;
+
+#ifdef USE_FREERTOS
+/* ★ B（固件）2026-10-09（决策 47）：安全停车"真正落到电机"的那一环。
+   任务层（TaskTask）把 `Patrol_MotorsDisabled()` 的结果写进这个变量，
+   中断在这里读它并**强制** Flag_Stop=1（厂商的 Turn_Off() 已经会据此关电机）。
+   为什么放在中断里做：中断每 5/10 ms 都会跑，是唯一能保证"锁存一置位、电机立刻停"的地方；
+   而任务侧写一个 volatile u8 是原子的，不需要任何锁。 */
+extern volatile u8 App_MotorDisable;
+#endif
 /**************************************************************************
 函数功能：所有的控制代码都在这里面
          5ms定时中断由MPU6050的INT引脚触发
@@ -48,8 +60,17 @@ int EXTI15_10_IRQHandler(void)
    		Xianfu_Pwm();                                                       //===PWM限幅
 			if(Pick_Up(Acceleration_Z,Angle_Balance,Encoder_Left,Encoder_Right))//===检查是否小车被那起
 			Flag_Stop=1;	                                                      //===如果被拿起就关闭电机
+#ifdef USE_FREERTOS
+			/* ★ 安全停车锁存期间，"放下自动使能"这条厂商逻辑必须被挡住，
+			   否则把车拿起来再放下就会**绕过安全停车**（决策 41 要求锁存、不自动起步）。*/
+			if(Put_Down(Angle_Balance,Encoder_Left,Encoder_Right) && App_MotorDisable==0)
+			Flag_Stop=0;	                                                      //===如果被放下就启动电机
+			/* ★ 锁存优先：本拍强制关电机（Turn_Off 会据此真正把 PWM 置 0）*/
+			if(App_MotorDisable) Flag_Stop=1;
+#else
 			if(Put_Down(Angle_Balance,Encoder_Left,Encoder_Right))              //===检查是否小车被放下
 			Flag_Stop=0;	                                                      //===如果被放下就启动电机
+#endif
       if(Turn_Off(Angle_Balance,Voltage)==0)                              //===如果不存在异常
  			Set_Pwm(Moto1,Moto2);                                               //===赋值给PWM寄存器
   		if(Bi_zhang==0)Led_Flash(100);                                      //===LED闪烁;常规模式 1s改变一次指示灯的状态	
@@ -197,8 +218,18 @@ void Key(void)
 {	
 	u8 tmp,tmp2;
 	tmp=click_N_Double(50); 
+#ifdef USE_FREERTOS
+	/* ★ B（固件）2026-10-09（决策 47）：RTOS 模式下按键语义
+	     · 单击 = 启停（**但安全停车锁存期间无效**：禁止用按键绕过安全锁存）
+	     · 双击 = **切换 OLED 显示页**（原本是切 Flag_Show，而 RTOS 模式不用 DataScope，
+	             那条串口已改成有线协议链路 —— 见 pages.h 的说明）
+	     · 长按 = 普通/避障（厂商原语义，不变）                                              */
+	if(tmp==1 && App_MotorDisable==0)Flag_Stop=!Flag_Stop;//单击控制小车的启停
+	if(tmp==2)Pages_Next();              //双击切换 OLED 显示页
+#else
 	if(tmp==1)Flag_Stop=!Flag_Stop;//单击控制小车的启停
 	if(tmp==2)Flag_Show=!Flag_Show;//双击控制小车的显示状态
+#endif
 	tmp2=Long_Press();                   
   if(tmp2==1) Bi_zhang=!Bi_zhang;		//长按控制小车是否进入超声波模式 
 }

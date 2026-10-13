@@ -180,7 +180,7 @@ firmware/
 
 | 模式 | Flash | RAM |
 |---|---|---|
-| `USE_RTOS=1`（默认） | **62,968 B / 1 MB（6.01%）** | **32,792 B / 128 KB（25.02%）** |
+| `USE_RTOS=1`（默认） | **64,920 B / 1 MB（6.19%）** | **32,800 B / 128 KB（25.02%）** |
 | `USE_RTOS=0`（裸机对照） | 49,188 B（4.69%） | 5,176 B（3.95%） |
 
 `.hex` 数据区 `0x08000000 ~ 0x0800C3A4`（48.9 KB），首行 `:020000040800F2`、末行 `:00000001FF`
@@ -193,11 +193,21 @@ firmware/
 | 链路 | 端口 | 速率 | 用途 |
 |---|---|---|---|
 | 蓝牙 | USART2（PA2/PA3） | 115200 8N1 | 主链路：演示/验收/上位机正常连接 |
-| **有线** | **USART1（PA9/PA10，USB-TTL）** | 115200 8N1 | 实验室调试与 **PID 整定**（不受蓝牙配对与干扰影响）|
+| **有线** | **USART1（PA9/PA10）= 板载 MicroUSB（CH340G）** | 115200 8N1 | 实验室调试与 **PID 整定**：**直接插板上 USB 即可**（与 FlyMcu 烧录用同一串口，调参时先关掉 FlyMcu）|
 
 两条链路**同一套协议、对等**：收到帧就处理、回复原路返回；周期上报与事件告警**两条都发**。
 
-**有线调参流程**（USB-TTL 接 PA9/PA10）：
+**有线调参流程**（插板上 MicroUSB，`tools/fw_prep/tune.py` 已把下面这些做成命令）：
+
+```powershell
+python ..\tools\fw_prep\tune.py --selftest            # 离线自检（不需要板子）
+python ..\tools\fw_prep\tune.py -p COM5 --dump        # 回读 7 个参数
+python ..\tools\fw_prep\tune.py -p COM5 --set 3=85    # 在线改（立即生效，回显实际值）
+python ..\tools\fw_prep\tune.py -p COM5 --observe 20 --csv run1.csv   # 100 Hz 观测 + 统计
+python ..\tools\fw_prep\tune.py -p COM5 --save        # 存 Flash
+```
+
+手工等价流程：
 
 ```text
 0x24{ID=0xFD, 值=1}  → 进调参观测模式：有线链路开始 100 Hz 上报 0x10/0x11
@@ -225,6 +235,7 @@ firmware/
 | 8 | **轮径与编码器线数未实测** | ⬜ 到货实测 | `app_config.h` 里暂定 ⌀67 mm / 1560 counts/rev；不实测则"轮速 mm/s"只是按假设换算 |
 | 9 | **`waypointReached` 恒为 0** | ⬜ 到货后接里程判据 | 状态机的"到位"输入还没接编码器里程（已知待接线项）|
 | 10 | DHT11 在任务里可能被控制中断打断 | ⬜ 到货实测 | 已内置重试 3 次；若仍不稳，改由中断捕获边沿 |
+| 11 | **OLED 自研页（页 1/2）需要目视确认排版** | ⬜ 到货实测 | 字号 12 每字符 6 px 的估算已按 21 字符/行排过；实物确认后微调坐标即可（`App/Ui/pages.c`）|
 
 ---
 

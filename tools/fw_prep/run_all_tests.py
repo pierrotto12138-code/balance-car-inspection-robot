@@ -27,6 +27,7 @@ TESTS = [
     ("传感器算法原生单测", ["run_sensor_test.py"]),
     ("巡检状态机原生单测", ["run_patrol_test.py"]),
     ("PID 参数打包原生单测", ["run_param_test.py"]),
+    ("调参工具协议自检（PC 侧独立实现）", ["tune.py", "--selftest"]),
 ]
 
 
@@ -41,9 +42,13 @@ def main():
 
     for label, script in TESTS:
         path = os.path.join(ROOT, "tools", "fw_prep", script[0])
-        rc, out = run([sys.executable, path])
+        rc, out = run([sys.executable, path] + list(script[1:]))
         m = re.search(r"通过 (\d+) 条，失败 (\d+) 条", out)
-        detail = f"通过 {m.group(1)} / 失败 {m.group(2)}" if m else "(未解析到结果)"
+        if m:
+            detail = f"通过 {m.group(1)} / 失败 {m.group(2)}"
+        else:
+            # 其他脚本用"不符 N / 通过 / OK"这类说法：只要退出码为 0 就算通过
+            detail = "通过" if rc == 0 else "(未解析到结果)"
         results.append((label, rc == 0, detail))
         if rc != 0:
             print(f"--- {label} 输出（失败）---")

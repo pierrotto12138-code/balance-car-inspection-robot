@@ -7,7 +7,7 @@
 > | 你是谁 | 先看哪份 |
 > |---|---|
 > | **👤 人（新读者）** | [`docs/handoff/交接说明.md`](docs/handoff/交接说明.md) —— 全部已确认事实、决策、资产位置、踩坑、下一步 |
-> | **🤖 AI 编码代理** | [`AGENTS.md`](AGENTS.md) —— 路径、桥接、**28 条踩坑铁律**、能力边界 |
+> | **🤖 AI 编码代理** | [`AGENTS.md`](AGENTS.md) —— 路径、桥接、**29 条踩坑铁律**、能力边界 |
 > | **📚 找文档** | [`docs/文档索引.md`](docs/文档索引.md) |
 > | **🔧 板子到了要焊** | [`docs/design_hardware/焊接调试手册.md`](docs/design_hardware/焊接调试手册.md) |
 

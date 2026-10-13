@@ -20,6 +20,7 @@
 #include "patrol.h"
 #include "param_store.h"
 #include "buzzer.h"
+#include "pages.h"
 #include "show.h"
 
 /* ============================================================================
@@ -39,6 +40,12 @@ extern float Balance_Kp, Balance_Kd, Velocity_Kp, Velocity_Ki, Zhongzhi;
  * ==========================================================================*/
 static volatile unsigned long s_ticks[APP_TASK_COUNT];
 static volatile int s_schedRunning = 0;
+
+/* ★ 安全停车"真正落到电机"的通道（决策 47）：TaskTask 写、控制中断读。
+   中断据此强制 Flag_Stop=1 —— 这样"500 ms 失联 / 急停 / 硬件故障"才真的会停车。
+   （此前 `Patrol_MotorsDisabled()` 的结果没有任何地方使用：锁存只停在状态机里，
+     电机照转 —— 这是本轮复查抓到的最严重问题。）*/
+volatile u8 App_MotorDisable = 0;
 
 unsigned long App_TaskTicks(int idx)
 {
@@ -229,8 +236,30 @@ static void on_frame(const ProtoFrame *f, void *user)
 	case PROTO_DOWN_MODE:                    /* 0x22 控制模式 */
 	case PROTO_DOWN_MOTION:                  /* 0x20 运动控制 */
 	case PROTO_DOWN_ESTOP:                   /* 0x2F 紧急停机 */
-		(void)Patrol_Command(&s_patrol, f->cmd, f->data, f->len, now);
+	{
+		int accepted = Patrol_Command(&s_patrol, f->cmd, f->data, f->len, now);
+
+		/* ★ 决策 41/47：安全停车是**锁存**的 ——
+		     只有"显式使能"（0x21 任务=自主巡航，或 0x20 使能位=1）才能解除，并且
+		     解除时要**同时**把电机重新使能，否则车会"任务已恢复但电机还关着"。
+		     急停（0x2F）相反：立刻停车（不等 100 ms 的任务周期）。 */
+		if (f->cmd == PROTO_DOWN_ESTOP)
+		{
+			App_MotorDisable = 1u;
+			taskENTER_CRITICAL();
+			Flag_Stop = 1;
+			taskEXIT_CRITICAL();
+		}
+		else if (accepted && s_patrol.safetyStop == 0 &&
+		         ((f->cmd == PROTO_DOWN_TASK && f->len >= 1 && f->data[0] == PROTO_TASK_PATROL) ||
+		          (f->cmd == PROTO_DOWN_MOTION && f->len >= 5 && f->data[4] != 0)))
+		{
+			taskENTER_CRITICAL();
+			Flag_Stop = 0;                   /* 显式使能：重新允许电机出力 */
+			taskEXIT_CRITICAL();
+		}
 		break;
+	}
 
 	default:
 		break;
@@ -479,6 +508,10 @@ static void state_task(void *arg)
 
 		(void)Patrol_Tick(&s_patrol, &in);
 
+		/* ★ 决策 47：把"该不该关电机"告诉控制中断（安全停车/故障 → 中断强制 Flag_Stop=1）。
+		   这是"500 ms 失联安全停车"能否真正停车的唯一通路。 */
+		App_MotorDisable = Patrol_MotorsDisabled(&s_patrol) ? 1u : 0u;
+
 		/* 阈值研判（多帧确认 + 90% 迟滞）*/
 		if (s_calibDone)
 		{
@@ -509,8 +542,15 @@ static void ui_task(void *arg)
 
 		if (Flag_Show == 0)
 		{
-			APP_Show();
-			oled_show();
+			if (Flag_Page == PAGE_VENDOR)
+			{
+				APP_Show();
+				oled_show();          /* 厂商原始界面（页 0）*/
+			}
+			else
+			{
+				Pages_Show();         /* 自研页 1/2（USER 按键双击切换）*/
+			}
 		}
 
 		/* 报警：任一通道确认超阈值，或处于安全停车/故障 → 蜂鸣器响（PC5 低电平）*/

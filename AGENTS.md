@@ -158,6 +158,7 @@ pwsh -NoProfile -File tools\eda_exec.ps1 -CodeFile tools\eda_pcb_overview.js
 | **26** | **★ 改板换了引脚，要连"所有用到该脚的地方"一起改** —— 超声波 TRIG 从 PC2 改到 PC4，若只改 `GPIO_Init` 而漏了发脉冲的 `PCout(2)`，现象是"编译没问题、测距恒为 0"。**改完要全仓库搜一遍旧引脚**（`PCout(2)`/`PAout(4)`…）。 |
 | **27** | **★ 状态机与标定/初始化之间不要互相等待** —— "离开预热"要求"标定完成"，而"标定收尾"又写在"已离开预热"的分支里 = **死锁**（车永远进不了待机）。凡是"A 等 B、B 等 A"的流程，必须有一方是**单向收尾**（按次数或超时自行结束）。 |
 | **28** | **解析外部文件/向量时对"分节变化与空列"要防御** —— 向量文件加了新分节，解析器把中文名当十六进制 `stoul` 直接抛异常；行尾空列还会被 `std::getline` 丢掉。**证据链本身崩了，比没有证据更危险**：解析器要按"列内容"判别而非按行位置。 |
+| **29** | **★ "算出该停车"≠"真的停车"** —— 状态机的 `Patrol_MotorsDisabled()` 结果如果没人用，安全功能就是**装饰**：本项目复查时发现 500 ms 失联只把标志置位、**电机照转**。凡是"决策 → 执行机构"的链路，**两端都要各自验证**（一端单测逻辑、一端确认变量真的被中断/驱动读走）。同理还要排查**绕过安全逻辑的旁路** —— 厂商的"放下自动使能"与"按键启停"都曾能把安全锁存解除。 |
 
 ---
 
@@ -222,6 +223,7 @@ python ..\tools\fw_prep\run_proto_test.py          # ★ 协议层原生单测�
 python ..\tools\fw_prep\run_sensor_test.py        # ★ 传感器算法原生单测（1235 条断言）
 python ..\tools\fw_prep\run_patrol_test.py        # ★ 巡检状态机原生单测（67 条断言）
 python ..\tools\fw_prep\run_param_test.py         # ★ PID 参数打包原生单测（24 条断言）
+python ..\tools\fw_prep\tune.py --selftest          # ★ 有线调参工具自检（PC 侧独立实现，比对冻结向量）
 python ..\tools\fw_prep\check_vector_table.py     # ★ 向量表 + 关键中断归属（读 .map）
 python ..\tools\fw_prep\check_isr_safety.py       # ★ 中断安全：ISR 不得调用 FreeRTOS API（编译器不报，上板才炸）
 python ..\tools\fw_prep\pin_check.py              # ★ 引脚基线：从 PCB 的 PAD_NET 逐脚比对
@@ -234,7 +236,7 @@ python ..\tools\fw_prep\gen_test_vectors.py       # 协议测试向量（B/C 共
 
 - **文档中文，工程目录英文。**
 - **改动前先看对应文档**：硬件 → `docs/design_hardware/`；协议 → `docs/protocol/`。
-- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 46）。
+- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 48）。
 - **固件（B）相关**：开工准备与核验记录在 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)；
   构建 = `arm-none-eabi-gcc` + Makefile（**必须产出 `.hex`**，用 FlyMcu 串口 ISP 烧录），**不考虑 Keil 交付**（决策 34）。
 - **新读者入口**：[`docs/文档索引.md`](docs/文档索引.md)；**接手**：[`docs/handoff/交接说明.md`](docs/handoff/交接说明.md)。

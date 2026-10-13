@@ -1,4 +1,7 @@
 #include "show.h"
+#ifdef USE_FREERTOS
+#include "comm_link.h"      /* DataScope 与协议共用 USART1 → 需要发送互斥（见函数内说明）*/
+#endif
   /**************************************************************************
 作者：平衡小车之家
 我的淘宝小店：http://shop114407458.taobao.com/
@@ -103,9 +106,18 @@ void DataScope(void)
 //		DataScope_Get_Channel_Data(0, 9 );  
 //		DataScope_Get_Channel_Data( 0 , 10);
 		Send_Count = DataScope_Data_Generate(3);
+#ifdef USE_FREERTOS
+		/* ★ B（固件）2026-10-09：RTOS 模式下 USART1 已改为**有线协议链路**，
+		   这个波形输出必须与协议帧互斥，否则两者会交错成乱码。
+		   （RTOS 模式本就不调用 DataScope，这里只是把"万一被调用"的隐患堵住。）*/
+		CommLink_LockTx();
+#endif
 		for( i = 0 ; i < Send_Count; i++) 
 		{
 		while((USART1->SR&0X40)==0);  
 		USART1->DR = DataScope_OutPut_Buffer[i]; 
 		}
+#ifdef USE_FREERTOS
+		CommLink_UnlockTx();
+#endif
 }
