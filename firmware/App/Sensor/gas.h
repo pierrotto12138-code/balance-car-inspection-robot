@@ -1,5 +1,5 @@
-#ifndef __GAS_H
-#define __GAS_H
+#ifndef APP_SENSOR_GAS_H
+#define APP_SENSOR_GAS_H
 
 /*
  * MQ-2 / MQ-135 气体传感通道（**纯算法层**，无任何 ST 头文件）
@@ -91,4 +91,4 @@ int   Gas_UpdateAlarm(GasChannel *ch, uint16_t threshPpmX10, uint8_t confirmFram
 /* ---- ppm 换算（供上位机/显示复用） ---- */
 float Gas_RatioToPpm(const GasChannelCfg *cfg, float ratio);
 
-#endif /* __GAS_H */
+#endif /* APP_SENSOR_GAS_H */

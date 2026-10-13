@@ -1,5 +1,5 @@
-#ifndef __PARAM_STORE_H
-#define __PARAM_STORE_H
+#ifndef APP_CONTROL_PARAM_STORE_H
+#define APP_CONTROL_PARAM_STORE_H
 
 /*
  * PID 参数的 Flash 持久化（STM32 层；打包逻辑在 param_pack.c，可离线测）
@@ -32,4 +32,4 @@ int  ParamStore_SetOne(uint8_t id, float value);
 /* 由参数 ID 读一个值；返回 0=成功 */
 int  ParamStore_GetOne(uint8_t id, float *value);
 
-#endif /* __PARAM_STORE_H */
+#endif /* APP_CONTROL_PARAM_STORE_H */

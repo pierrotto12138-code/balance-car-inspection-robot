@@ -1,5 +1,5 @@
-#ifndef __TIMER_H
-#define __TIMER_H
+#ifndef BSP_TIMER_TIMER_H
+#define BSP_TIMER_TIMER_H
 #include <sys.h>	 
   /**************************************************************************
 作者：平衡小车之家

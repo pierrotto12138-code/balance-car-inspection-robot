@@ -1,5 +1,5 @@
-#ifndef __SENSOR_ADC_H
-#define __SENSOR_ADC_H
+#ifndef APP_SENSOR_SENSOR_ADC_H
+#define APP_SENSOR_SENSOR_ADC_H
 
 /*
  * 三通道 ADC 采集（**STM32 硬件层**）
@@ -36,4 +36,4 @@ uint16_t SensorAdc_Read(uint8_t ch);
 /* 读 n 次取平均（气体读数用；n 建议 8） */
 uint16_t SensorAdc_ReadAvg(uint8_t ch, uint8_t n);
 
-#endif /* __SENSOR_ADC_H */
+#endif /* APP_SENSOR_SENSOR_ADC_H */

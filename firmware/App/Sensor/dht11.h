@@ -1,5 +1,5 @@
-#ifndef __DHT11_H
-#define __DHT11_H
+#ifndef APP_SENSOR_DHT11_H
+#define APP_SENSOR_DHT11_H
 
 /*
  * DHT11 单总线温湿度传感器 —— **纯解析层**（无 ST 头文件，可在 PC 上测）
@@ -37,4 +37,4 @@ int Dht11_Parse(const uint8_t raw[5], Dht11Reading *out);
 float Dht11_TempC(const Dht11Reading *r);
 float Dht11_HumiRh(const Dht11Reading *r);
 
-#endif /* __DHT11_H */
+#endif /* APP_SENSOR_DHT11_H */

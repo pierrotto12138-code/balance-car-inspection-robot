@@ -1,5 +1,5 @@
-#ifndef __ENCODER_H
-#define __ENCODER_H
+#ifndef BSP_ENCODER_ENCODER_H
+#define BSP_ENCODER_ENCODER_H
 #include <sys.h>	 
   /**************************************************************************
 作者：平衡小车之家

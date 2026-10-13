@@ -1,5 +1,5 @@
-#ifndef __APP_API_H
-#define __APP_API_H
+#ifndef APP_TASK_APP_API_H
+#define APP_TASK_APP_API_H
 
 /*
  * **给上位机 / 后续开发用的只读接口**（B，2026-10-09）
@@ -101,4 +101,4 @@ int App_LoadPidParams(void);                         /* 从 Flash 读回 */
 void App_SetTuningMode(int on);
 int  App_GetTuningMode(void);
 
-#endif /* __APP_API_H */
+#endif /* APP_TASK_APP_API_H */

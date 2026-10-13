@@ -1,5 +1,5 @@
-#ifndef __ODOM_H
-#define __ODOM_H
+#ifndef APP_TASK_ODOM_H
+#define APP_TASK_ODOM_H
 
 /*
  * 里程计（纯逻辑：只有加减法，可在 PC 上测）
@@ -47,4 +47,4 @@ void Odom_Reset(void);
    返回本拍前进的毫米数（左右取绝对值平均）。*/
 uint32_t Odom_CountsToMm(int left, int right);
 
-#endif /* __ODOM_H */
+#endif /* APP_TASK_ODOM_H */

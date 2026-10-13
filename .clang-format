@@ -1,0 +1,58 @@
+# ============================================================================
+#  代码格式化标准 (clang-format)
+#
+#  用法（装了 clang-format 的机器上）：
+#      clang-format -i <文件>
+#      git ls-files "firmware/App/**/*.c" | xargs clang-format -i
+#
+#  ★ 作用范围：只格式化"我们自己的 / 我们手改过的文件"（见
+#    docs/design_firmware/编码规范.md 第一节）。厂商与第三方目录一律保持原样：
+#        Drivers/FWLIB、Drivers/CMSIS、Middlewares/FreeRTOS、
+#        App/Sensor/DMP、App/Comms/DataScope、User/stm32f4xx*
+#
+#  本文件是"风格单一真相"：现有空白规范化脚本
+#  （tools/fw_prep/normalize_whitespace.py）只处理"行尾 + 尾随空白 + 混合缩进"，
+#  更细的排版（括号位置、续行缩进…）以本文件为准，逐步收敛。
+# ============================================================================
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# 缩进：硬件代码惯例用制表符，显示宽度 4（本项目既有代码即如此）
+UseTab: Always
+TabWidth: 4
+IndentWidth: 4
+ContinuationIndentWidth: 8
+
+# 大括号：函数与控制语句另起一行（Allman）
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+
+# 行宽 110（现有长注释不受影响）
+ColumnLimit: 110
+
+# 指针/引用贴变量名（uint8_t *p）
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+# 不改 include 顺序：本项目刻意按"系统头 → RTOS → 自研模块"分组并写注释
+SortIncludes: false
+
+# switch 的 case 缩进到 switch 内
+IndentCaseLabels: true
+
+# 空行治理
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+# 不强制连续赋值/声明的列对齐（本项目大量手工表格化对齐，交给作者）
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+# 行尾与文件结尾
+EndOfLine: LF
+InsertNewlineAtEOF: true

@@ -1,4 +1,4 @@
-#ifndef __EXTI_H
+#ifndef BSP_EXTI_EXTI_H
 #define __EXIT_H	 
 #include "sys.h"
   /**************************************************************************

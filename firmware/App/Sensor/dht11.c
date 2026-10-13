@@ -14,7 +14,7 @@ int Dht11_Parse(const uint8_t raw[5], Dht11Reading *out)
 
 	/* 典型故障特征：总线没接（全 0）或一直拉高（全 0xFF） */
 	if ((raw[0] == 0 && raw[1] == 0 && raw[2] == 0 && raw[3] == 0) ||
-	    (raw[0] == 0xFF && raw[1] == 0xFF && raw[2] == 0xFF && raw[3] == 0xFF))
+		(raw[0] == 0xFF && raw[1] == 0xFF && raw[2] == 0xFF && raw[3] == 0xFF))
 	{
 		return -3;
 	}

@@ -1,5 +1,5 @@
-#ifndef __APP_CONFIG_H
-#define __APP_CONFIG_H
+#ifndef APP_CONFIG_APP_CONFIG_H
+#define APP_CONFIG_APP_CONFIG_H
 
 /*
  * 应用层**集中配置**（B，2026-10-09）
@@ -133,4 +133,4 @@
 #define CFG_PARAM_FLASH_ADDR  0x08040000u  /* 扇区 6（128 KB）起始；本工程代码仅 60 KB，不会自撞 */
 #define CFG_PARAM_MAGIC       0x50494431u  /* 'PID1'，用于判断 Flash 里是否已有有效参数 */
 
-#endif /* __APP_CONFIG_H */
+#endif /* APP_CONFIG_APP_CONFIG_H */

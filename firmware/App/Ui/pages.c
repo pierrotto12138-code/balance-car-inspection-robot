@@ -76,8 +76,8 @@ static void show_gas_page(void)
 	}
 
 	/* 采样档位：预热 / 常态 1 Hz / 异常 5 Hz
-	   ★ 三个档位文本都要给页码（x=120）让位：WARM 84..119、FAST 88..119、1HZ 96..119
-	     （`FAST` 原在 x=90 → 占 90..121，会压住页码 2 px；2026-10-09 按排布核算改为 x=88）*/
+		★ 三个档位文本都要给页码（x=120）让位：WARM 84..119、FAST 88..119、1HZ 96..119
+			（`FAST` 原在 x=90 → 占 90..121，会压住页码 2 px；2026-10-09 按排布核算改为 x=88）*/
 	if (g.gear == PROTO_GEAR_WARMUP)
 	{
 		OLED_ShowString(84, 0, S("WARM"));
@@ -92,7 +92,7 @@ static void show_gas_page(void)
 	}
 
 	/* 第 2 行：MQ-2（估计浓度 ppm，报警时右侧提示）
-	   "MQ2" 3×8=24 → 值 26 px（24..49）→ "ppm" 3×8=24（60..83）→ "ALM"（90..113）*/
+		"MQ2" 3×8=24 → 值 26 px（24..49）→ "ppm" 3×8=24（60..83）→ "ALM"（90..113）*/
 	OLED_ShowString(0, 10, S("MQ2"));
 	show_x1(24, 10, g.mq2PpmX10);
 	OLED_ShowString(60, 10, S("ppm"));
@@ -102,7 +102,7 @@ static void show_gas_page(void)
 	}
 
 	/* 第 3 行：MQ-135
-	   "MQ135" 5×8=40 → 值 26 px（44..69）→ "ppm"（78..101）→ 报警只放 1 个字符 A（108..115）*/
+		"MQ135" 5×8=40 → 值 26 px（44..69）→ "ppm"（78..101）→ 报警只放 1 个字符 A（108..115）*/
 	OLED_ShowString(0, 20, S("MQ135"));
 	show_x1(44, 20, g.mq135PpmX10);
 	OLED_ShowString(78, 20, S("ppm"));
@@ -112,7 +112,7 @@ static void show_gas_page(void)
 	}
 
 	/* 第 4 行：温湿度（DHT11 无效时明确显示 N/A，不含糊）
-	   T(0..7) 值 26 px(12..37) C(44..51) H(56..63) 值(68..93) %(96..103) */
+		T(0..7) 值 26 px(12..37) C(44..51) H(56..63) 值(68..93) %(96..103) */
 	if (g.dhtValid)
 	{
 		OLED_ShowString(0, 30, S("T"));
@@ -128,13 +128,13 @@ static void show_gas_page(void)
 	}
 
 	/* 第 5 行：Rs/R0（决策 18 的"主链路量"）—— 左 MQ-2、右 MQ-135
-	   "Rs/R0" 5×8=40 → 值 32 px（44..75）→ 值 32 px（80..111）*/
+		"Rs/R0" 5×8=40 → 值 32 px（44..75）→ 值 32 px（80..111）*/
 	OLED_ShowString(0, 40, S("Rs/R0"));
 	show_x2(44, 40, (u32)(g.mq2Ratio * 100.0f + 0.5f));
 	show_x2(80, 40, (u32)(g.mq135Ratio * 100.0f + 0.5f));
 
 	/* 第 6 行：R0 是否已标定 + 温湿度补偿是否开启
-	   "CAL OK" 6×8=48（0..47）→ "COMP OFF" 8×8=64（56..119）*/
+		"CAL OK" 6×8=48（0..47）→ "COMP OFF" 8×8=64（56..119）*/
 	OLED_ShowString(0, 50, (g.mq2R0 > 0.0f) ? S("CAL OK") : S("CAL..."));
 	OLED_ShowString(56, 50, (g.readyBits & PROTO_RDY_COMP) ? S("COMP ON") : S("COMP OFF"));
 }
@@ -197,7 +197,7 @@ static void show_patrol_page(void)
 	if (App_GetDiag(&d) == 0)
 	{
 		/* 两条链路各收到多少字节、丢了多少（诊断环形缓冲是否够用）
-		   "BT rx" 5×8=40（0..39）→ 5 位数值 30 px（44..73）*/
+			"BT rx" 5×8=40（0..39）→ 5 位数值 30 px（44..73）*/
 		OLED_ShowString(0, 30, S("BT rx"));
 		show_num(44, 30, d.rxBytesBt, 5);
 

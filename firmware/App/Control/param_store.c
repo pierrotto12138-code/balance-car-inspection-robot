@@ -17,14 +17,14 @@ static ParamSet s_params;
 static void params_to_globals(const ParamSet *p)
 {
 	Board_SyncPidParams(p->balanceKp, p->balanceKd, p->velocityKp, p->velocityKi,
-	                    p->zhongzhi, p->turnKp, p->turnKd);
+						p->zhongzhi, p->turnKp, p->turnKd);
 }
 
 /* 厂商全局量 → 参数表（保存时以"实际生效值"为准）*/
 static void params_from_globals(ParamSet *p)
 {
 	Board_CapturePidParams(&p->balanceKp, &p->balanceKd, &p->velocityKp, &p->velocityKi,
-	                       &p->zhongzhi, &p->turnKp, &p->turnKd);
+							&p->zhongzhi, &p->turnKp, &p->turnKd);
 }
 
 void ParamStore_InitDefaults(void)
@@ -61,9 +61,9 @@ int ParamStore_Save(void)
 	STMFLASH_Write(CFG_PARAM_FLASH_ADDR, words, PARAM_WORDS + 4);
 
 	/* 回读校验：写 Flash 有失败可能，这里当场确认，避免"以为存了"。
-	   ★ 2026-10-09 复查发现：这里原先只 `Unpack` 一次、**从未与 `s_params` 比对** ——
-	     等于"看起来验证了、其实没有"（正是 AGENTS 铁律 29 说的那类错）。
-	     现在逐字段比对，内容不一致就明确返回失败。*/
+		★ 2026-10-09 复查发现：这里原先只 `Unpack` 一次、**从未与 `s_params` 比对** ——
+			等于"看起来验证了、其实没有"（正是 AGENTS 铁律 29 说的那类错）。
+			现在逐字段比对，内容不一致就明确返回失败。*/
 	{
 		static uint32_t check[PARAM_WORDS + 4];
 		ParamSet verify;

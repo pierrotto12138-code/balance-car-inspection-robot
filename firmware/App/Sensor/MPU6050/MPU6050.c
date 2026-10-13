@@ -17,7 +17,7 @@
 #define FLASH_MEM_START ((void*)0x1800)
 #define q30  1073741824.0f
 short gyro[3], accel[3], sensors;
-float Pitch,Roll; 
+float Pitch,Roll;
 float q0=1.0f,q1=0.0f,q2=0.0f,q3=0.0f;
 static signed char gyro_orientation[9] = {-1, 0, 0,
                                            0,-1, 0,
@@ -195,7 +195,7 @@ void MPU6050_setFullScaleAccelRange(uint8_t range) {
 *函数原型:		void MPU6050_setSleepEnabled(uint8_t enabled)
 *功　　能:	    设置  MPU6050 是否进入睡眠模式
 				enabled =1   睡觉
-			    enabled =0   工作
+				enabled =0   工作
 *******************************************************************************/
 void MPU6050_setSleepEnabled(uint8_t enabled) {
     IICwriteBit(devAddr, MPU6050_RA_PWR_MGMT_1, MPU6050_PWR1_SLEEP_BIT, enabled);
@@ -218,7 +218,7 @@ uint8_t MPU6050_getDeviceID(void) {
 uint8_t MPU6050_testConnection(void) {
    if(MPU6050_getDeviceID() == 0x68)  //0b01101000;
    return 1;
-   	else return 0;
+		else return 0;
 }
 
 /**************************实现函数********************************************
@@ -246,8 +246,8 @@ void MPU6050_initialize(void) {
     MPU6050_setFullScaleGyroRange(MPU6050_GYRO_FS_2000);//陀螺仪最大量程 +-1000度每秒
     MPU6050_setFullScaleAccelRange(MPU6050_ACCEL_FS_2);	//加速度度最大量程 +-2G
     MPU6050_setSleepEnabled(0); //进入工作状态
-	 MPU6050_setI2CMasterModeEnabled(0);	 //不让MPU6050 控制AUXI2C
-	 MPU6050_setI2CBypassEnabled(0);	 //主控制器的I2C与	MPU6050的AUXI2C	直通。控制器可以直接访问HMC5883L
+		MPU6050_setI2CMasterModeEnabled(0);	 //不让MPU6050 控制AUXI2C
+		MPU6050_setI2CBypassEnabled(0);	 //主控制器的I2C与	MPU6050的AUXI2C	直通。控制器可以直接访问HMC5883L
 }
 
 
@@ -260,33 +260,33 @@ void MPU6050_initialize(void) {
 作    者：平衡小车之家
 **************************************************************************/
 void DMP_Init(void)
-{ 
+{
    u8 temp[1]={0};
    i2cRead(0x68,0x75,1,temp);
-	 Flag_Show=1;
-	 printf("mpu_set_sensor complete ......\r\n");
+		Flag_Show=1;
+		printf("mpu_set_sensor complete ......\r\n");
 	if(temp[0]!=0x68)NVIC_SystemReset();
 	if(!mpu_init())
   {
-	  if(!mpu_set_sensors(INV_XYZ_GYRO | INV_XYZ_ACCEL))
-	  	 printf("mpu_set_sensor complete ......\r\n");
-	  if(!mpu_configure_fifo(INV_XYZ_GYRO | INV_XYZ_ACCEL))
-	  	 printf("mpu_configure_fifo complete ......\r\n");
-	  if(!mpu_set_sample_rate(DEFAULT_MPU_HZ))
-	  	 printf("mpu_set_sample_rate complete ......\r\n");
-	  if(!dmp_load_motion_driver_firmware())
-	  	printf("dmp_load_motion_driver_firmware complete ......\r\n");
-	  if(!dmp_set_orientation(inv_orientation_matrix_to_scalar(gyro_orientation)))
-	  	 printf("dmp_set_orientation complete ......\r\n");
-	  if(!dmp_enable_feature(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_TAP |
-	        DMP_FEATURE_ANDROID_ORIENT | DMP_FEATURE_SEND_RAW_ACCEL | DMP_FEATURE_SEND_CAL_GYRO |
-	        DMP_FEATURE_GYRO_CAL))
-	  	 printf("dmp_enable_feature complete ......\r\n");
-	  if(!dmp_set_fifo_rate(DEFAULT_MPU_HZ))
-	  	 printf("dmp_set_fifo_rate complete ......\r\n");
-	  run_self_test();
-	  if(!mpu_set_dmp_state(1))
-	  	 printf("mpu_set_dmp_state complete ......\r\n");
+		if(!mpu_set_sensors(INV_XYZ_GYRO | INV_XYZ_ACCEL))
+			printf("mpu_set_sensor complete ......\r\n");
+		if(!mpu_configure_fifo(INV_XYZ_GYRO | INV_XYZ_ACCEL))
+			printf("mpu_configure_fifo complete ......\r\n");
+		if(!mpu_set_sample_rate(DEFAULT_MPU_HZ))
+			printf("mpu_set_sample_rate complete ......\r\n");
+		if(!dmp_load_motion_driver_firmware())
+			printf("dmp_load_motion_driver_firmware complete ......\r\n");
+		if(!dmp_set_orientation(inv_orientation_matrix_to_scalar(gyro_orientation)))
+			printf("dmp_set_orientation complete ......\r\n");
+		if(!dmp_enable_feature(DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_TAP |
+			DMP_FEATURE_ANDROID_ORIENT | DMP_FEATURE_SEND_RAW_ACCEL | DMP_FEATURE_SEND_CAL_GYRO |
+			DMP_FEATURE_GYRO_CAL))
+			printf("dmp_enable_feature complete ......\r\n");
+		if(!dmp_set_fifo_rate(DEFAULT_MPU_HZ))
+			printf("dmp_set_fifo_rate complete ......\r\n");
+		run_self_test();
+		if(!mpu_set_dmp_state(1))
+			printf("mpu_set_dmp_state complete ......\r\n");
   }
 	Flag_Show=0;
 }
@@ -297,20 +297,20 @@ void DMP_Init(void)
 作    者：平衡小车之家
 **************************************************************************/
 void Read_DMP(void)
-{	
-	  unsigned long sensor_timestamp;
+{
+		unsigned long sensor_timestamp;
 		unsigned char more;
 		long quat[4];
 
-				dmp_read_fifo(gyro, accel, quat, &sensor_timestamp, &sensors, &more);		
+				dmp_read_fifo(gyro, accel, quat, &sensor_timestamp, &sensors, &more);
 				if (sensors & INV_WXYZ_QUAT )
-				{    
-					 q0=quat[0] / q30;
-					 q1=quat[1] / q30;
-					 q2=quat[2] / q30;
-					 q3=quat[3] / q30;
-					 Pitch = asin(-2 * q1 * q3 + 2 * q0* q2)* 57.3; 	
-					 Roll= atan2(2 * q2 * q3 + 2 * q0 * q1, -2 * q1 * q1 - 2 * q2* q2 + 1)* 57.3; // roll
+				{
+						q0=quat[0] / q30;
+						q1=quat[1] / q30;
+						q2=quat[2] / q30;
+						q3=quat[3] / q30;
+						Pitch = asin(-2 * q1 * q3 + 2 * q0* q2)* 57.3;
+						Roll= atan2(2 * q2 * q3 + 2 * q0 * q1, -2 * q1 * q1 - 2 * q2* q2 + 1)* 57.3; // roll
 				}
 
 }
@@ -321,11 +321,11 @@ void Read_DMP(void)
 作    者：平衡小车之家
 **************************************************************************/
 int Read_Temperature(void)
-{	   
-	  float Temp;
-	  Temp=(I2C_ReadOneByte(devAddr,MPU6050_RA_TEMP_OUT_H)<<8)+I2C_ReadOneByte(devAddr,MPU6050_RA_TEMP_OUT_L);
+{
+		float Temp;
+		Temp=(I2C_ReadOneByte(devAddr,MPU6050_RA_TEMP_OUT_H)<<8)+I2C_ReadOneByte(devAddr,MPU6050_RA_TEMP_OUT_L);
 		if(Temp>32768) Temp-=65536;
 		Temp=(36.53f+Temp/340)*10;
-	  return (int)Temp;
+		return (int)Temp;
 }
 //------------------End of File----------------------------

@@ -1,5 +1,5 @@
-#ifndef __CAN_H
-#define __CAN_H	 
+#ifndef BSP_CAN_CAN_H
+#define BSP_CAN_CAN_H	 
 #include "sys.h"	    
 
 //CAN1接收RX0中断使能

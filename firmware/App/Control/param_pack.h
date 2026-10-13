@@ -1,5 +1,5 @@
-#ifndef __PARAM_PACK_H
-#define __PARAM_PACK_H
+#ifndef APP_CONTROL_PARAM_PACK_H
+#define APP_CONTROL_PARAM_PACK_H
 
 /*
  * PID 参数的**打包/解包**（纯逻辑，可在 PC 上测；不碰 Flash）
@@ -68,4 +68,4 @@ int      ParamPack_Unpack(const uint32_t *words, uint16_t capWords,
    返回 1 = 相同，0 = 不同。 */
 int      ParamPack_Equal(const ParamSet *a, const ParamSet *b);
 
-#endif /* __PARAM_PACK_H */
+#endif /* APP_CONTROL_PARAM_PACK_H */

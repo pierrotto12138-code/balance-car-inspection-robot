@@ -1,5 +1,5 @@
-#ifndef __PROTOCOL_H
-#define __PROTOCOL_H
+#ifndef APP_COMMS_PROTOCOL_H
+#define APP_COMMS_PROTOCOL_H
 
 /*
  * 自研通信协议 v1.0（机器人 ↔ 上位机）
@@ -209,4 +209,4 @@ typedef struct { uint8_t paramId, reserved; float value; } ProtoPidTune;
 uint16_t Proto_Pack_PidTune(const ProtoPidTune *s, uint8_t *out);
 int      Proto_Unpack_PidTune(const uint8_t *in, uint16_t len, ProtoPidTune *s);
 
-#endif /* __PROTOCOL_H */
+#endif /* APP_COMMS_PROTOCOL_H */

@@ -1,5 +1,5 @@
-#ifndef __PATROL_H
-#define __PATROL_H
+#ifndef APP_TASK_PATROL_H
+#define APP_TASK_PATROL_H
 
 /*
  * 巡检任务状态机（**纯逻辑层**：无 ST 头文件、时间由外部注入 → 可在 PC 上跑）
@@ -117,4 +117,4 @@ int  Patrol_MotorsDisabled(const PatrolState *st);
 /* 供任务层查询：本轮应使用哪个采样档位（配合 SensorReport_DecideGear 使用） */
 int  Patrol_WantsFastSampling(const PatrolState *st);
 
-#endif /* __PATROL_H */
+#endif /* APP_TASK_PATROL_H */

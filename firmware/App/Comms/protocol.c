@@ -53,7 +53,7 @@ int16_t Proto_GetI16(const uint8_t *p)
 uint32_t Proto_GetU32(const uint8_t *p)
 {
 	return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
-	       ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+			((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 float Proto_GetF32(const uint8_t *p)
@@ -85,10 +85,10 @@ uint16_t Proto_Encode(uint8_t cmd, const uint8_t *data, uint16_t len,
 	}
 
 	/*
-	 * 帧布局（协议 §二）：[0]=0xAA [1]=0x55 [2]=cmd [3..4]=N(小端)
-	 *                      [5..5+N-1]=数据段 [5+N..6+N]=CRC(小端)
-	 * 总长 = 7 + N
-	 */
+		* 帧布局（协议 §二）：[0]=0xAA [1]=0x55 [2]=cmd [3..4]=N(小端)
+		*                      [5..5+N-1]=数据段 [5+N..6+N]=CRC(小端)
+		* 总长 = 7 + N
+		*/
 	out[0] = PROTO_HEADER0;
 	out[1] = PROTO_HEADER1;
 	out[2] = cmd;
@@ -250,7 +250,7 @@ uint16_t Proto_Feed(ProtoDecoder *dec, const uint8_t *data, uint16_t len,
 			dec->crcGot = (uint16_t)(dec->crcGot | ((uint16_t)b << 8));
 
 			/* 重算：命令字 + 长度(2) + 数据段 —— 用**增量 CRC**，
-			   不需要为拼接再开一块缓冲区（RAM 省下来了，且没有 static 状态）。 */
+				不需要为拼接再开一块缓冲区（RAM 省下来了，且没有 static 状态）。 */
 			head[0] = dec->cmd;
 			head[1] = (uint8_t)(dec->need & 0xFF);
 			head[2] = (uint8_t)((dec->need >> 8) & 0xFF);

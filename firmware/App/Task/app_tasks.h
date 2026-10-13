@@ -1,5 +1,5 @@
-#ifndef __APP_TASKS_H
-#define __APP_TASKS_H
+#ifndef APP_TASK_APP_TASKS_H
+#define APP_TASK_APP_TASKS_H
 
 /*
  * 应用任务层（混合式架构的落地，决策 8/42）
@@ -49,4 +49,4 @@ unsigned long App_TaskTicks(int idx);
 #define APP_TASK_UI    3
 #define APP_TASK_COUNT 4
 
-#endif /* __APP_TASKS_H */
+#endif /* APP_TASK_APP_TASKS_H */

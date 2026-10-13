@@ -147,7 +147,7 @@ int Patrol_Command(PatrolState *st, uint8_t cmd, const uint8_t *data, uint16_t l
 
 	case PROTO_DOWN_MOTION:               /* 0x20 运动控制：使能位=1 也可解除锁存 */
 		if (len >= 5 && data[4] != 0 && st->stopLatched &&
-		    st->stopReason == PATROL_STOP_LINKLOST)
+			st->stopReason == PATROL_STOP_LINKLOST)
 		{
 			st->safetyStop = 0;
 			st->stopLatched = 0;
@@ -180,7 +180,7 @@ int Patrol_WantsFastSampling(const PatrolState *st)
 {
 	/* 异常研判驻留期，或处于报警态：5 Hz 加密采样（决策里的"异常驱动自适应采样"）*/
 	return (st->phase == PROTO_PHASE_ANALYSIS) ||
-	       ((st->fault & PATROL_FLT_GAS) != 0);
+			((st->fault & PATROL_FLT_GAS) != 0);
 }
 
 /* ------------------------------------------------------------------ 周期推进 */
@@ -224,8 +224,8 @@ int Patrol_Tick(PatrolState *st, const PatrolInput *in)
 	else if (!in->gasAlarm && !in->gasAnyOver)
 	{
 		/* 报警解除（去抖/迟滞由 gas 模块负责）：**当拍就清标志**，
-		   否则上位机会看到"巡航 + 气体异常"这种自相矛盾的一拍，
-		   采样档位也会多保持一个周期的 5 Hz。 */
+			否则上位机会看到"巡航 + 气体异常"这种自相矛盾的一拍，
+			采样档位也会多保持一个周期的 5 Hz。 */
 		st->fault &= (uint8_t)~PATROL_FLT_GAS;
 	}
 	st->lastGasAlarm = in->gasAlarm;
@@ -242,8 +242,8 @@ int Patrol_Tick(PatrolState *st, const PatrolInput *in)
 
 	case PROTO_PHASE_WARMUP:
 		/* 预热完成条件：预热时长到 + R0 标定完成。
-		   ★ DHT 一直读不到**不阻塞任务**：只置"传感器失效"标志并照常进待机
-		     （补偿会自动不启用，因为 sensor_report 只认有效的 DHT 数据）。*/
+			★ DHT 一直读不到**不阻塞任务**：只置"传感器失效"标志并照常进待机
+				（补偿会自动不启用，因为 sensor_report 只认有效的 DHT 数据）。*/
 		if ((uint32_t)(now - st->tEnterMs) >= st->cfg.warmupMs)
 		{
 			if (in->calibrating)
@@ -277,7 +277,7 @@ int Patrol_Tick(PatrolState *st, const PatrolInput *in)
 				st->waypoint++;
 			}
 			st->progress = (uint8_t)((st->doneWaypoints * 100u) /
-			                         (st->cfg.totalWaypoints ? st->cfg.totalWaypoints : 1u));
+										(st->cfg.totalWaypoints ? st->cfg.totalWaypoints : 1u));
 			if (st->progress > 100u)
 			{
 				st->progress = 100u;

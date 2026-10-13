@@ -1,5 +1,5 @@
-#ifndef BOARD_STATE_H
-#define BOARD_STATE_H
+#ifndef APP_BOARD_BOARD_STATE_H
+#define APP_BOARD_BOARD_STATE_H
 
 /*
  * 板级状态适配层 —— **App 层访问厂商全局量的唯一出口**
@@ -59,4 +59,4 @@ void Board_CapturePidParams(float *balanceKp, float *balanceKd,
                             float *velocityKp, float *velocityKi,
                             float *zhongzhi, float *turnKp, float *turnKd);
 
-#endif /* BOARD_STATE_H */
+#endif /* APP_BOARD_BOARD_STATE_H */

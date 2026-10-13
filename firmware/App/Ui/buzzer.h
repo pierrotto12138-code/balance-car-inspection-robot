@@ -1,5 +1,5 @@
-#ifndef __BUZZER_H
-#define __BUZZER_H
+#ifndef APP_UI_BUZZER_H
+#define APP_UI_BUZZER_H
 
 /*
  * 蜂鸣器（底板 J18，**有源模块 + 低电平触发**，接 PC5 —— 决策 26）
@@ -22,4 +22,4 @@ void Buzzer_On(void);        /* 响（PC5 = 0）*/
 void Buzzer_Off(void);       /* 停（PC5 = 1）*/
 void Buzzer_Set(int on);
 
-#endif /* __BUZZER_H */
+#endif /* APP_UI_BUZZER_H */

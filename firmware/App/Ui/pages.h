@@ -1,5 +1,5 @@
-#ifndef __PAGES_H
-#define __PAGES_H
+#ifndef APP_UI_PAGES_H
+#define APP_UI_PAGES_H
 
 /*
  * 自研 OLED 显示页（B，2026-10-09）
@@ -34,4 +34,4 @@ void Pages_Next(void);
 /* 由 UiTask 调用：绘制当前页并刷新 */
 void Pages_Show(void);
 
-#endif /* __PAGES_H */
+#endif /* APP_UI_PAGES_H */

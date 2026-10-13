@@ -1,5 +1,5 @@
-#ifndef __DHT11_HW_H
-#define __DHT11_HW_H
+#ifndef APP_SENSOR_DHT11_HW_H
+#define APP_SENSOR_DHT11_HW_H
 
 /*
  * DHT11 单总线时序层（**STM32 硬件层**）
@@ -29,4 +29,4 @@
    -10 = 无响应（传感器未接/上电未稳定），-11 = 位采样超时 */
 int Dht11_Hw_Read(Dht11Reading *out);
 
-#endif /* __DHT11_HW_H */
+#endif /* APP_SENSOR_DHT11_HW_H */

@@ -1,5 +1,5 @@
-#ifndef __COMM_LINK_H
-#define __COMM_LINK_H
+#ifndef APP_COMMS_COMM_LINK_H
+#define APP_COMMS_COMM_LINK_H
 
 /*
  * 通信链路胶水层（**STM32 侧**）：两条串口 + 环形缓冲 + 发送互斥
@@ -54,4 +54,4 @@ uint32_t CommLink_RxDropped(CommLinkId link);   /* 环形缓冲满而丢弃的�
 uint32_t CommLink_Overruns(CommLinkId link);    /* 串口硬件 ORE 次数 */
 uint32_t CommLink_NowMs(void);                  /* 毫秒时基（RTOS 下为内核节拍）*/
 
-#endif /* __COMM_LINK_H */
+#endif /* APP_COMMS_COMM_LINK_H */

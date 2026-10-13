@@ -1,5 +1,5 @@
-#ifndef __IOI2C_H
-#define __IOI2C_H
+#ifndef BSP_IIC_IOI2C_H
+#define BSP_IIC_IOI2C_H
 #include "stm32f4xx.h"
   /**************************************************************************
 作者：平衡小车之家

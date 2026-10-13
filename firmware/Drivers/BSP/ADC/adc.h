@@ -1,5 +1,5 @@
-#ifndef __ADC_H
-#define __ADC_H	
+#ifndef BSP_ADC_ADC_H
+#define BSP_ADC_ADC_H
 #include "sys.h"
   /**************************************************************************
 作者：平衡小车之家
@@ -8,18 +8,5 @@
 #define Battery_Ch 9
 void Adc_Init(void);
 u16 Get_Adc(u8 ch);
-int Get_battery_volt(void);   
-#endif 
-
-
-
-
-
-
-
-
-
-
-
-
-
+int Get_battery_volt(void);
+#endif

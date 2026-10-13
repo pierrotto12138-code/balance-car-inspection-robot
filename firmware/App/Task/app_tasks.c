@@ -223,17 +223,17 @@ static void on_frame(const ProtoFrame *f, void *user)
 		int accepted = Patrol_Command(&s_patrol, f->cmd, f->data, f->len, now);
 
 		/* ★ 决策 41/47：安全停车是**锁存**的 ——
-		     只有"显式使能"（0x21 任务=自主巡航，或 0x20 使能位=1）才能解除，并且
-		     解除时要**同时**把电机重新使能，否则车会"任务已恢复但电机还关着"。
-		     急停（0x2F）相反：立刻停车（不等 100 ms 的任务周期）。 */
+				只有"显式使能"（0x21 任务=自主巡航，或 0x20 使能位=1）才能解除，并且
+				解除时要**同时**把电机重新使能，否则车会"任务已恢复但电机还关着"。
+				急停（0x2F）相反：立刻停车（不等 100 ms 的任务周期）。 */
 		if (f->cmd == PROTO_DOWN_ESTOP)
 		{
 			App_MotorDisable = 1u;
 			Board_WriteVendorStop(1);        /* 权威是 App_MotorDisable，Flag_Stop 只是执行器 */
 		}
 		else if (accepted && s_patrol.safetyStop == 0 &&
-		         ((f->cmd == PROTO_DOWN_TASK && f->len >= 1 && f->data[0] == PROTO_TASK_PATROL) ||
-		          (f->cmd == PROTO_DOWN_MOTION && f->len >= 5 && f->data[4] != 0)))
+					((f->cmd == PROTO_DOWN_TASK && f->len >= 1 && f->data[0] == PROTO_TASK_PATROL) ||
+					(f->cmd == PROTO_DOWN_MOTION && f->len >= 5 && f->data[4] != 0)))
 		{
 			Board_WriteVendorStop(0);        /* 显式使能：重新允许电机出力 */
 		}
@@ -279,9 +279,9 @@ static void comm_task(void *arg)
 					break;
 				}
 				/* 忽略返回值是有意的：解帧统计（成功/丢弃）由解帧器自己维护，
-				   已在 App_GetDiag().framesOk/framesDropped 里对外暴露 */
+					已在 App_GetDiag().framesOk/framesDropped 里对外暴露 */
 				(void)Proto_Feed(&s_dec[li], buf, n, now, on_frame,
-				                 (void *)(uintptr_t)li);
+									(void *)(uintptr_t)li);
 			}
 		}
 
@@ -321,7 +321,7 @@ static void comm_task(void *arg)
 			static uint32_t lastTelemetryMs = 0;
 			static uint32_t lastHeartbeatMs = 0;
 			uint32_t telemetryPeriod = s_tuningMode ? CFG_TX_TELEMETRY_TUNE_MS
-			                                        : CFG_TX_TELEMETRY_MS;
+													: CFG_TX_TELEMETRY_MS;
 
 			if ((uint32_t)(now - lastTelemetryMs) >= telemetryPeriod)
 			{
@@ -359,7 +359,7 @@ static void comm_task(void *arg)
 		/* 5) 环境与气体（0x14）：按采样档位（1 Hz / 5 Hz）上报 */
 		{
 			uint32_t gasPeriod = (s_gear == PROTO_GEAR_FAST) ? CFG_TX_ENV_FAST_MS
-			                   : (s_gear == PROTO_GEAR_WARMUP ? CFG_TX_ENV_WARMUP_MS : s_cfg.samplePeriodMs);
+								: (s_gear == PROTO_GEAR_WARMUP ? CFG_TX_ENV_WARMUP_MS : s_cfg.samplePeriodMs);
 			if (gasPeriod < CFG_TX_ENV_MIN_MS)
 			{
 				gasPeriod = CFG_TX_ENV_MIN_MS;
@@ -404,7 +404,7 @@ static void gas_task(void *arg)
 		s_ticks[APP_TASK_GAS]++;
 
 		period = (s_gear == PROTO_GEAR_FAST) ? CFG_GAS_SAMPLE_FAST_MS
-		       : (s_gear == PROTO_GEAR_WARMUP ? CFG_GAS_SAMPLE_WARM_MS : s_cfg.samplePeriodMs);
+				: (s_gear == PROTO_GEAR_WARMUP ? CFG_GAS_SAMPLE_WARM_MS : s_cfg.samplePeriodMs);
 		if (period < CFG_GAS_SAMPLE_MIN_MS)
 		{
 			period = CFG_GAS_SAMPLE_MIN_MS;
@@ -435,8 +435,8 @@ static void gas_task(void *arg)
 			s_mq135RawAvg = SensorAdc_ReadAvg(SENSOR_ADC_CH_MQ135, CFG_GAS_ADC_AVG);
 
 			/* ---- R0 标定（★ 修正：标定必须由 GasTask 自己收尾，否则状态机永远出不了预热）----
-			   收尾条件：累加够 CFG_GAS_CALIB_SAMPLES 次，或预热时长已到（拿现有样本收尾）。
-			   若一次样本都没有，r0 保持 0 → 通道报"未就绪"，但**不阻塞任务**。 */
+				收尾条件：累加够 CFG_GAS_CALIB_SAMPLES 次，或预热时长已到（拿现有样本收尾）。
+				若一次样本都没有，r0 保持 0 → 通道报"未就绪"，但**不阻塞任务**。 */
 			if (!s_calibDone)
 			{
 				if (s_calibStartMs == 0u)
@@ -449,7 +449,7 @@ static void gas_task(void *arg)
 					Gas_CalibrateAdd(&s_mq135, s_mq135RawAvg);
 				}
 				if (s_mq2.r0Count >= CFG_GAS_CALIB_SAMPLES ||
-				    (uint32_t)(now - s_calibStartMs) >= CFG_WARMUP_MS)
+					(uint32_t)(now - s_calibStartMs) >= CFG_WARMUP_MS)
 				{
 					(void)Gas_CalibrateFinish(&s_mq2);
 					(void)Gas_CalibrateFinish(&s_mq135);
@@ -490,14 +490,14 @@ static void state_task(void *arg)
 		in.hwFault = (uint8_t)((bs.voltage > 0 && bs.voltage < 1110) ? 1 : 0);
 
 		/* 巡检点到位判据 = **编码器里程**（决策 49）。
-		   红外 J11/J14 是 DNP 未焊，所以不依赖红外；间距在 app_config.h 里配置
-		   （CFG_WAYPOINT_SPACING_MM = 0 表示暂不启用，此时恒为 0，车按指令推进）。 */
+			红外 J11/J14 是 DNP 未焊，所以不依赖红外；间距在 app_config.h 里配置
+			（CFG_WAYPOINT_SPACING_MM = 0 表示暂不启用，此时恒为 0，车按指令推进）。 */
 		in.waypointReached = (uint8_t)Odom_WaypointReached();
 
 		(void)Patrol_Tick(&s_patrol, &in);
 
 		/* ★ 决策 47：把"该不该关电机"告诉控制中断（安全停车/故障 → 中断强制 Flag_Stop=1）。
-		   这是"500 ms 失联安全停车"能否真正停车的唯一通路。 */
+			这是"500 ms 失联安全停车"能否真正停车的唯一通路。 */
 		App_MotorDisable = Patrol_MotorsDisabled(&s_patrol) ? 1u : 0u;
 
 		/* 阈值研判（多帧确认 + 90% 迟滞）*/
@@ -509,8 +509,8 @@ static void state_task(void *arg)
 
 		/* 自适应采样档位（预热 → 常态 1 Hz ↔ 异常 5 Hz）*/
 		s_gear = SensorReport_DecideGear(&s_mq2, &s_mq135,
-		                                 (s_patrol.phase != PROTO_PHASE_WARMUP) && s_calibDone,
-		                                 s_cfg.adaptiveSample);
+											(s_patrol.phase != PROTO_PHASE_WARMUP) && s_calibDone,
+											s_cfg.adaptiveSample);
 
 		vTaskDelay(pdMS_TO_TICKS(CFG_STATE_TICK_MS));
 	}
@@ -530,7 +530,7 @@ static void ui_task(void *arg)
 		s_ticks[APP_TASK_UI]++;
 
 		/* 厂商 `Flag_Show`：0 = 用 OLED/APP 界面；非 0 = 让位给 DataScope 波形通道。
-		   ★ 走 board_state 出口读，不直接碰厂商全局量（P2 结构整改）。 */
+			★ 走 board_state 出口读，不直接碰厂商全局量（P2 结构整改）。 */
 		Board_ReadRaw(&bs);
 		if (bs.showFlag == 0)
 		{
@@ -609,7 +609,7 @@ void App_Start(void)
 	xTaskCreate(ui_task,    "Ui",   CFG_STACK_UI,    0, 1, &h);
 
 	/* ★ P2 分层整改：把"让出 CPU 的延时"注入 System 层，紧接着启动调度器。
-	   钩子注册 ⟺ 调度器已启动；注册之前的 delay_ms() 仍走忙等，行为与原来一致。 */
+		钩子注册 ⟺ 调度器已启动；注册之前的 delay_ms() 仍走忙等，行为与原来一致。 */
 	Delay_SetMsHook(app_delay_ms);
 	s_msHookInstalled = 1;
 	vTaskStartScheduler();
@@ -653,8 +653,8 @@ int App_GetTelemetry(AppTelemetry *out)
 int App_GetGas(AppGasSnapshot *out)
 {
 	ProtoEnvGas env;                        /* 用 0x14 载荷组装器当**唯一实现**：
-	                                           就绪位与 ppm×10 的算法只有一处（见 sensor_report.c），
-	                                           避免"两套实现算同一件事"（2026-10-09 复查发现）*/
+												就绪位与 ppm×10 的算法只有一处（见 sensor_report.c），
+												避免"两套实现算同一件事"（2026-10-09 复查发现）*/
 	float tempC = 0.0f, humiRh = 0.0f;
 	uint8_t valid;
 	uint8_t comp;
@@ -665,7 +665,7 @@ int App_GetGas(AppGasSnapshot *out)
 	}
 
 	/* ★ 兑现 app_api.h 的承诺：getter 自带短临界区 ——
-	   本函数同时读 GasTask 写的气体通道与 TaskTask 写的档位，必须取一个一致的快照。 */
+		本函数同时读 GasTask 写的气体通道与 TaskTask 写的档位，必须取一个一致的快照。 */
 	taskENTER_CRITICAL();
 
 	valid = s_dhtValid;
@@ -725,7 +725,7 @@ int App_GetDiag(AppDiag *out)
 		return -1;
 	}
 	/* ★ 短临界区：计数由中断在后台自增，任务心跳由各任务写 ——
-	   取一次一致快照，避免"任务心跳读了半拍"这类误判（排障时这两组数最容易被误信）。 */
+		取一次一致快照，避免"任务心跳读了半拍"这类误判（排障时这两组数最容易被误信）。 */
 	taskENTER_CRITICAL();
 	out->rxBytesBt = CommLink_RxBytes(COMM_LINK_BT);
 	out->rxBytesWire = CommLink_RxBytes(COMM_LINK_WIRE);

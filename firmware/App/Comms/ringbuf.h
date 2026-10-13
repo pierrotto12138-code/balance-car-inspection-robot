@@ -1,5 +1,5 @@
-#ifndef __RINGBUF_H
-#define __RINGBUF_H
+#ifndef APP_COMMS_RINGBUF_H
+#define APP_COMMS_RINGBUF_H
 
 /*
  * 单生产者 / 单消费者 环形缓冲（SPSC）
@@ -45,4 +45,4 @@ int      RingBuf_Pop(RingBuf *rb, uint8_t *byte);
 /* 任务里调用：一次取多个，返回取到的个数 */
 uint16_t RingBuf_PopBuf(RingBuf *rb, uint8_t *out, uint16_t maxLen);
 
-#endif /* __RINGBUF_H */
+#endif /* APP_COMMS_RINGBUF_H */

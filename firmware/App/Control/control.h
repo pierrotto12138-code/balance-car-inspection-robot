@@ -1,5 +1,5 @@
-#ifndef __CONTROL_H
-#define __CONTROL_H
+#ifndef APP_CONTROL_CONTROL_H
+#define APP_CONTROL_CONTROL_H
 #include "sys.h"
   /**************************************************************************
 作者：平衡小车之家

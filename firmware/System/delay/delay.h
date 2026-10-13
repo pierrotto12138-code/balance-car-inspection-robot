@@ -1,7 +1,7 @@
-#ifndef __DELAY_H
-#define __DELAY_H 			   
-#include <sys.h>	  
-////////////////////////////////////////////////////////////////////////////////// 	 
+#ifndef SYS_DELAY_DELAY_H
+#define SYS_DELAY_DELAY_H
+#include <sys.h>
+//////////////////////////////////////////////////////////////////////////////////
 void delay_init(u8 SYSCLK);
 void delay_ms(u16 nms);
 void delay_us(u32 nus);
@@ -22,32 +22,3 @@ typedef void (*DelayMsHook)(uint16_t nms);
 void Delay_SetMsHook(DelayMsHook hook);
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

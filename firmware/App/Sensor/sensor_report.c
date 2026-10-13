@@ -77,7 +77,7 @@ uint8_t SensorReport_DecideGear(const GasChannel *mq2, const GasChannel *mq135,
 		return PROTO_GEAR_NORMAL;
 	}
 	if ((mq2 != 0 && (mq2->alarm || mq2->overCount > 0)) ||
-	    (mq135 != 0 && (mq135->alarm || mq135->overCount > 0)))
+		(mq135 != 0 && (mq135->alarm || mq135->overCount > 0)))
 	{
 		return PROTO_GEAR_FAST;                  /* 异常驱动：1 Hz → 5 Hz */
 	}

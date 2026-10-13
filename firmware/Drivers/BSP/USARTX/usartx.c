@@ -14,18 +14,18 @@ u8 Usart2_Receive;
 返回  值：无
 **************************************************************************/
 void uart2_init(u32 bound)
-{  	 
+{
 	GPIO_InitTypeDef GPIO_InitStructure;
 	USART_InitTypeDef USART_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
-	
+
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA,ENABLE); //使能GPIOA时钟
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2,ENABLE);//使能USART2时钟
- 
+
 	//串口2对应引脚复用映射
 	GPIO_PinAFConfig(GPIOA,GPIO_PinSource2,GPIO_AF_USART2); //GPIOA2复用为USART1
 	GPIO_PinAFConfig(GPIOA,GPIO_PinSource3,GPIO_AF_USART2); //GPIOA3复用为USART1
-	
+
 	//USART2端口配置
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3; //GPIOA2与GPIOA3
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;//复用功能
@@ -42,7 +42,7 @@ void uart2_init(u32 bound)
 	USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;//无硬件数据流控制
 	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;	//收发模式
   USART_Init(USART2, &USART_InitStructure); //初始化串口
-	
+
   USART_Cmd(USART2, ENABLE);  //使能串口
 	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);//开启相关中断
 
@@ -64,12 +64,12 @@ void USART2_IRQHandler(void)
 {
 #ifdef USE_FREERTOS
 	/* ★ B（固件）2026-10-09（决策 42）：协议模式下，中断里**只做一件事** ——
-	   把字节塞进环形缓冲，然后立刻返回。
-	     · 这里**绝不调用任何 FreeRTOS API**：本中断抢占优先级为 0，
-	       高于 configMAX_SYSCALL_INTERRUPT_PRIORITY(5)，调 RTOS API 会破坏内核；
-	     · 解帧（跨多次中断的状态机）放到 CommTask 里做，避免拉长中断、
-	       进而影响 5 ms/10 ms 的平衡控制节拍。
-	   ORE（溢出）也要读 DR 才能清标志，否则中断会一直挂着。 */
+		把字节塞进环形缓冲，然后立刻返回。
+			· 这里**绝不调用任何 FreeRTOS API**：本中断抢占优先级为 0，
+			高于 configMAX_SYSCALL_INTERRUPT_PRIORITY(5)，调 RTOS API 会破坏内核；
+			· 解帧（跨多次中断的状态机）放到 CommTask 里做，避免拉长中断、
+			进而影响 5 ms/10 ms 的平衡控制节拍。
+		ORE（溢出）也要读 DR 才能清标志，否则中断会一直挂着。 */
 	{
 		uint32_t sr = USART2->SR;
 		if (sr & (USART_SR_RXNE | USART_SR_ORE))
@@ -89,85 +89,83 @@ void USART2_IRQHandler(void)
 	/* 厂商原始实现：单字节 APP 遥控指令（裸机构建下保持不变）*/
 	if(USART_GetITStatus(USART2, USART_IT_RXNE) != RESET) //接收到数据
 	{
-	 static	int uart_receive=0;//蓝牙接收相关变量
-	 static u8 Flag_PID,i,j,Receive[50],Flag_CSB;
-	 static float Data;
-	 uart_receive=USART_ReceiveData(USART2); 
-	 Usart2_Receive=uart_receive;
-	
+		static	int uart_receive=0;//蓝牙接收相关变量
+		static u8 Flag_PID,i,j,Receive[50],Flag_CSB;
+		static float Data;
+		uart_receive=USART_ReceiveData(USART2);
+		Usart2_Receive=uart_receive;
+
 		if(uart_receive==0x59)  Flag_sudu=2;  //低速挡（默认值）
-		if(uart_receive==0x58)  Flag_sudu=1;  //高速档 
-	  if(uart_receive==0x62)Flag_Hover=!Flag_Hover;  
+		if(uart_receive==0x58)  Flag_sudu=1;  //高速档
+		if(uart_receive==0x62)Flag_Hover=!Flag_Hover;
 		if(uart_receive==0x61)Flag_CSB=!Flag_CSB;
-		 if(Bi_zhang!=0)
-		 {		
-			 Bi_zhang=Flag_CSB+1;   //循环选择避障模式和跟随模式
-		 }
-		
-	  if(uart_receive>10)  //默认使用app
-    {			
+			if(Bi_zhang!=0)
+			{
+				Bi_zhang=Flag_CSB+1;   //循环选择避障模式和跟随模式
+			}
+
+		if(uart_receive>10)  //默认使用app
+    {
 			Remoter_Ch1=0,Remoter_Ch2=0; //APP接收到信号之后 屏蔽航模遥控
 			if(uart_receive==0x5A)	Flag_Qian=0,Flag_Hou=0,Flag_Left=0,Flag_Right=0;//////////////刹车
 			else if(uart_receive==0x41)	Flag_Qian=1,Flag_Hou=0,Flag_Left=0,Flag_Right=0;//////////////前
 			else if(uart_receive==0x45)	Flag_Qian=0,Flag_Hou=1,Flag_Left=0,Flag_Right=0;//////////////后
-			else if(uart_receive==0x42||uart_receive==0x43||uart_receive==0x44)	
+			else if(uart_receive==0x42||uart_receive==0x43||uart_receive==0x44)
 														Flag_Qian=0,Flag_Hou=0,Flag_Left=0,Flag_Right=1;  //左
 			else if(uart_receive==0x46||uart_receive==0x47||uart_receive==0x48)	    //右
 														Flag_Qian=0,Flag_Hou=0,Flag_Left=1,Flag_Right=0;
 			else Flag_Qian=0,Flag_Hou=0,Flag_Left=0,Flag_Right=0;//////////////刹车
-  	}
+		}
 		if(uart_receive<10)     //备用app为：MiniBalanceV1.0  因为MiniBalanceV1.0的遥控指令为A~H 其HEX都小于10
-		{		
-      Remoter_Ch1=0,Remoter_Ch2=0; //APP接收到信号之后 屏蔽航模遥控			
+		{
+      Remoter_Ch1=0,Remoter_Ch2=0; //APP接收到信号之后 屏蔽航模遥控
 			if(uart_receive==0x00)	Flag_Qian=0,Flag_Hou=0,Flag_Left=0,Flag_Right=0;//////////////刹车
 			else if(uart_receive==0x01)	Flag_Qian=1,Flag_Hou=0,Flag_Left=0,Flag_Right=0;//////////////前
 			else if(uart_receive==0x05)	Flag_Qian=0,Flag_Hou=1,Flag_Left=0,Flag_Right=0;//////////////后
-			else if(uart_receive==0x02||uart_receive==0x03||uart_receive==0x04)	
+			else if(uart_receive==0x02||uart_receive==0x03||uart_receive==0x04)
 														Flag_Qian=0,Flag_Hou=0,Flag_Left=0,Flag_Right=1;  //左
 			else if(uart_receive==0x06||uart_receive==0x07||uart_receive==0x08)	    //右
 														Flag_Qian=0,Flag_Hou=0,Flag_Left=1,Flag_Right=0;
 			else Flag_Qian=0,Flag_Hou=0,Flag_Left=0,Flag_Right=0;//////////////刹车
-  	}	
+		}
 
 		if(Usart2_Receive==0x7B) Flag_PID=1;  //指令起始位
 		if(Usart2_Receive==0x7D) Flag_PID=2;  //指令停止位
-		 if(Flag_PID==1)                      //记录参数
-		 {
+			if(Flag_PID==1)                      //记录参数
+			{
 			Receive[i]=Usart2_Receive;
 			i++;
-		 }
-		 if(Flag_PID==2)   //执行
-		 {
-			     Show_Data_Mb=i;
-			     if(Receive[3]==0x50) 	       PID_Send=1;     //获取设备参数
-					 else  if(Receive[3]==0x57) 	 Flash_Send=1;   //掉电保存参数
-					 else  if(Receive[1]!=0x23)                    //更新PID参数
-					 {								
+			}
+			if(Flag_PID==2)   //执行
+			{
+					Show_Data_Mb=i;
+					if(Receive[3]==0x50) 	       PID_Send=1;     //获取设备参数
+						else  if(Receive[3]==0x57) 	 Flash_Send=1;   //掉电保存参数
+						else  if(Receive[1]!=0x23)                    //更新PID参数
+						{
 						for(j=i;j>=4;j--)
 						{
-						  Data+=(Receive[j-1]-48)*pow(10,i-j);
+							Data+=(Receive[j-1]-48)*pow(10,i-j);
 						}
 						switch(Receive[1])
-						 {
-							 case 0x30:  Balance_Kp=Data/100;break;
-							 case 0x31:  Balance_Kd=Data/100;break;
-							 case 0x32:  Velocity_Kp=Data/100;break;
-							 case 0x33:  Velocity_Ki=Data/100;break;
-							 case 0x34:  break;
-							 case 0x35:  break;
-							 case 0x36:  break;
-							 case 0x37:  break;
-							 case 0x38:  break;
-						 }
-					 }				 
-					 Flag_PID=0;   //相关标志位清零
-					 i=0;
-					 j=0;
-					 Data=0;
-					 memset(Receive, 0, sizeof(u8)*50);
-		 } 
+							{
+								case 0x30:  Balance_Kp=Data/100;break;
+								case 0x31:  Balance_Kd=Data/100;break;
+								case 0x32:  Velocity_Kp=Data/100;break;
+								case 0x33:  Velocity_Ki=Data/100;break;
+								case 0x34:  break;
+								case 0x35:  break;
+								case 0x36:  break;
+								case 0x37:  break;
+								case 0x38:  break;
+							}
+						}
+						Flag_PID=0;   //相关标志位清零
+						i=0;
+						j=0;
+						Data=0;
+						memset(Receive, 0, sizeof(u8)*50);
+			}
 	}
 #endif  /* USE_FREERTOS：协议模式只进环形缓冲，厂商 APP 解析仅在裸机构建下编译 */
 }
-
-

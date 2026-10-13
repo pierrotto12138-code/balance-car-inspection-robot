@@ -1,5 +1,5 @@
-#ifndef __CRC16_H
-#define __CRC16_H
+#ifndef APP_COMMS_CRC16_H
+#define APP_COMMS_CRC16_H
 
 /*
  * CRC-16/MODBUS（协议 §2.1）
@@ -26,4 +26,4 @@ uint16_t crc16_modbus(const uint8_t *buf, uint16_t len);
  */
 uint16_t crc16_modbus_update(uint16_t crc, const uint8_t *buf, uint16_t len);
 
-#endif /* __CRC16_H */
+#endif /* APP_COMMS_CRC16_H */

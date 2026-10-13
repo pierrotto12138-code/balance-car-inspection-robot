@@ -162,12 +162,12 @@ strict:
 	@echo "=== 严格告警自检（$(words $(STRICT_SRC)) 个自研/手改文件；厂商头用 -isystem 屏蔽）==="
 	@fail=0; total=0; \
 	for f in $(STRICT_SRC); do \
-	  n=$$($(CC) -fsyntax-only $(CFLAGS) $(STRICT_WARN) $(STRICT_SYS) $(STRICT_INC) $$f 2>&1 \
-	        | grep -c 'warning:\|error:' || true); \
-	  if [ "$$n" != "0" ]; then echo "  [$$n 条] $$f"; \
-	    $(CC) -fsyntax-only $(CFLAGS) $(STRICT_WARN) $(STRICT_SYS) $(STRICT_INC) $$f 2>&1 \
-	      | grep 'warning:\|error:' | head -3 | sed 's/^/        /'; fail=1; fi; \
-	  total=$$((total + n)); \
+		n=$$($(CC) -fsyntax-only $(CFLAGS) $(STRICT_WARN) $(STRICT_SYS) $(STRICT_INC) $$f 2>&1 \
+			| grep -c 'warning:\|error:' || true); \
+		if [ "$$n" != "0" ]; then echo "  [$$n 条] $$f"; \
+		$(CC) -fsyntax-only $(CFLAGS) $(STRICT_WARN) $(STRICT_SYS) $(STRICT_INC) $$f 2>&1 \
+			| grep 'warning:\|error:' | head -3 | sed 's/^/        /'; fail=1; fi; \
+		total=$$((total + n)); \
 	done; \
 	echo "=== 合计 $$total 条 ==="; \
 	if [ "$$fail" = "0" ]; then echo "自研代码在严格告警下 0 条 ✅"; \

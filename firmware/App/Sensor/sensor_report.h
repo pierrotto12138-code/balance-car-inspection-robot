@@ -1,5 +1,5 @@
-#ifndef __SENSOR_REPORT_H
-#define __SENSOR_REPORT_H
+#ifndef APP_SENSOR_SENSOR_REPORT_H
+#define APP_SENSOR_SENSOR_REPORT_H
 
 /*
  * 传感器 → 协议载荷 的适配层（**纯算法，可在 PC 上测**）
@@ -45,4 +45,4 @@ void SensorReport_FillEnvGas(const GasChannel *mq2, const GasChannel *mq135,
 uint8_t SensorReport_DecideGear(const GasChannel *mq2, const GasChannel *mq135,
                                 int warmupDone, int adaptive);
 
-#endif /* __SENSOR_REPORT_H */
+#endif /* APP_SENSOR_SENSOR_REPORT_H */
