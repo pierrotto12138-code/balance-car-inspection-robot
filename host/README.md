@@ -1,5 +1,8 @@
 # 上位机（角色 C）— PC 端监控系统
 
+> 📋 **开工前先读**：[`../docs/design_host/C部分方案与计划.md`](../docs/design_host/C部分方案与计划.md) —— 调研结论 / 技术选型 / 五层模块 / 线程与数据模型 / UI 布局与配色 / P0~P5 计划。
+> 📄 **协议基线**：[`../docs/protocol/communication_protocol.md`](../docs/protocol/communication_protocol.md) **v1.1 冻结版**（含 §七 给上位机的显示约定 10 条）。
+
 > **状态：骨架已可构建运行，协议层已通过单元测试。**
 > 完整界面面板待实现（见下"待实现"清单）。
 

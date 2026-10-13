@@ -258,6 +258,7 @@ static void scenario_link_loss(void)
 	ok(Patrol_MotorsDisabled(&st) == 1, "安全停车后电机必须被禁用");
 	n = drain_events(&st, ev, PATROL_EVENT_QUEUE);
 	ok(has_event(ev, n, PROTO_EVT_TASK_FAIL), "应上报 0x04 任务失败");
+	ok(has_event(ev, n, PROTO_EVT_LINK_LOST), "应上报 0x08 通信失联（安全通道事件）");
 
 	/* 链路恢复：**不自动起步**（安全设计）*/
 	Patrol_NoteDownlink(&st, 1700);
@@ -272,6 +273,8 @@ static void scenario_link_loss(void)
 		ok(Patrol_Command(&st, PROTO_DOWN_MOTION, m, 5, 2100) == 1, "0x20 应被处理");
 	}
 	ok(st.safetyStop == 0 && Patrol_MotorsDisabled(&st) == 0, "显式使能后应解除安全停车");
+	n = drain_events(&st, ev, PATROL_EVENT_QUEUE);
+	ok(has_event(ev, n, PROTO_EVT_STOP_CLEARED), "0x20 显式使能解除时应上报 0x09");
 
 	/* 重新给任务也能解除并再起步 */
 	in = base_input(2500);
@@ -305,6 +308,7 @@ static void scenario_estop(void)
 	/* 连发急停帧不应产生重复事件 */
 	n = drain_events(&st, ev, PATROL_EVENT_QUEUE);
 	ok(has_event(ev, n, PROTO_EVT_TASK_FAIL), "首次急停应上报任务失败");
+	ok(has_event(ev, n, PROTO_EVT_ESTOP), "首次急停应上报 0x0A（安全通道事件）");
 	(void)Patrol_Command(&st, PROTO_DOWN_ESTOP, 0, 0, 1300);
 	(void)Patrol_Command(&st, PROTO_DOWN_ESTOP, 0, 0, 1400);
 	n = drain_events(&st, ev, PATROL_EVENT_QUEUE);
@@ -318,6 +322,9 @@ static void scenario_estop(void)
 	ok(st.safetyStop == 1, "急停锁存不应被 0x20 使能解除");
 	(void)Patrol_Command(&st, PROTO_DOWN_TASK, data, 2, 1600);
 	ok(st.safetyStop == 0, "重新下发任务可解除急停锁存（人工确认路径）");
+	/* 解除必须留下"配对事件"：0x0A（停）↔ 0x09（解除），上位机据此算停车时长 */
+	n = drain_events(&st, ev, PATROL_EVENT_QUEUE);
+	ok(has_event(ev, n, PROTO_EVT_STOP_CLEARED), "解除安全停车应上报 0x09（与 0x08/0x0A 配对）");
 }
 
 /* ------------------------------------------------------------------ 场景 4：硬件故障与超时 */

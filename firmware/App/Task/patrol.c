@@ -128,6 +128,7 @@ int Patrol_Command(PatrolState *st, uint8_t cmd, const uint8_t *data, uint16_t l
 			st->stopLatched = 0;
 			st->stopReason = PATROL_STOP_NONE;
 			st->fault &= (uint8_t)~PATROL_FLT_LINK;
+			q_push(st, PROTO_EVT_STOP_CLEARED, nowMs);   /* 事件 0x09：与 0x08/0x0A 配对 */
 			st->waypoint = 0;
 			st->doneWaypoints = 0;
 			st->progress = 0;
@@ -153,11 +154,18 @@ int Patrol_Command(PatrolState *st, uint8_t cmd, const uint8_t *data, uint16_t l
 			st->stopLatched = 0;
 			st->stopReason = PATROL_STOP_NONE;
 			st->fault &= (uint8_t)~PATROL_FLT_LINK;
+			q_push(st, PROTO_EVT_STOP_CLEARED, nowMs);   /* 事件 0x09 */
 			enter_phase(st, PROTO_PHASE_IDLE, nowMs);
 		}
 		return 1;
 
 	case PROTO_DOWN_ESTOP:                /* 0x2F 急停：立即安全停车（且锁存） */
+		/* ★ 只在"跃变"时上报事件（0x0A）：操作者连按急停不应刷屏事件日志，
+		   这一点由 tests/patrol_test.c 场景 3 的"重复急停不重复上报"断言约束。*/
+		if (st->safetyStop == 0 || st->stopReason != PATROL_STOP_ESTOP)
+		{
+			q_push(st, PROTO_EVT_ESTOP, nowMs);          /* 事件 0x0A：带时间戳的急停记录 */
+		}
 		safety_stop(st, PATROL_STOP_ESTOP, nowMs);
 		return 1;
 
@@ -196,6 +204,8 @@ int Patrol_Tick(PatrolState *st, const PatrolInput *in)
 		if ((uint32_t)(now - st->tLastDownlinkMs) > st->cfg.linkTimeoutMs)
 		{
 			st->fault |= PATROL_FLT_LINK;
+			q_push(st, PROTO_EVT_LINK_LOST, now);    /* 事件 0x08：失联停车（只报一次：
+			                                            safety_stop 置位后本分支不再进入）*/
 			safety_stop(st, PATROL_STOP_LINKLOST, now);
 			n++;
 		}

@@ -53,6 +53,14 @@
 #define PROTO_EVT_CRASH_LVBAT 0x05u
 #define PROTO_EVT_GAS_LIMIT  0x06u
 #define PROTO_EVT_WARMUP_FAIL 0x07u
+/* ---- 安全通道事件（决策 57：0x08~0x0A 专用于"安全停车"，便于上位机做带时间戳的配对）----
+ * 为什么单独给码：0x12 是 20 Hz 周期帧，"失联/急停"只体现在它的异常标志与阶段字节里，
+ * 上位机必须**对比前后两帧**才能推断出"什么时候停的"。而 0x13 事件帧自带时间戳 ——
+ * 这才是监控系统真正需要的记录。三种停车原因分开编码，日志里不会含糊。
+ */
+#define PROTO_EVT_LINK_LOST     0x08u  /* 通信失联（> linkTimeoutMs 无下行帧）→ 安全停车 */
+#define PROTO_EVT_STOP_CLEARED  0x09u  /* 安全停车解除（收到显式使能：0x21 任务 / 0x20 使能）*/
+#define PROTO_EVT_ESTOP         0x0Au  /* 收到急停指令（0x2F）→ 安全停车并锁存 */
 
 /* ---------- 任务 ID（§4.3） ---------- */
 #define PROTO_TASK_IDLE      0x00u
