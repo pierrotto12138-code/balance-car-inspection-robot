@@ -378,7 +378,7 @@ text 152 B / data 0 B / bss 1544 B
 | 文件 | 内容 |
 |---|---|
 | `App/Task/patrol.c/.h` | 巡检状态机（**纯逻辑，时间由外部注入**）：阶段用协议 `PROTO_PHASE_*`；维护进度/巡检点/异常标志；**待发事件环形队列**（8 条，供 0x13 上报）；`Patrol_Command()` 处理 0x21/0x20/0x22/0x2F；`Patrol_FillTaskState()` 组 0x12 载荷 |
-| `firmware/tests/patrol_test.c` | **脚本化时间线测试**：5 个场景、67 条断言（完整任务链 / 失联 / 急停 / 硬件故障与超时 / 迁移表与上报） |
+| `firmware/tests/patrol_test.c` | **脚本化时间线测试**：P3 时为 5 个场景 / 67 条断言（**现已增至 6 个场景 / 76 条**，新增里程计场景见 §十六）（完整任务链 / 失联 / 急停 / 硬件故障与超时 / 迁移表与上报） |
 | `tools/fw_prep/run_patrol_test.py` | 一条命令编译并运行 |
 | `tools/fw_prep/run_all_tests.py` | **一键跑完 B 阶段全部离线核验**（三个原生单测 + 交叉编译 + 向量表 + 引脚基线），输出汇总表 |
 
@@ -475,7 +475,7 @@ text 152 B / data 0 B / bss 1544 B
 | 内核真的进镜像 | ✅ `nm` 可见 `vTaskStartScheduler` / `xTaskCreate` / 四个任务函数 / `prvIdleTask` |
 | 向量表 | ✅ SVC / PendSV / SysTick 均来自 **`port.o`**（FreeRTOS），控制中断来自 `control.o` |
 | **中断安全静态检查**（新脚本） | ✅ **9 个中断处理函数全部不调用 FreeRTOS API**；并列出各中断抢占优先级，标明"高于 syscall 阈值 → 绝不能调 RTOS API（含 FromISR）" |
-| 三个原生单测 | ✅ 协议 97 / 传感器 1235 / 状态机 67 条断言全过 |
+| 三个原生单测 | ✅ 协议 97 / 传感器 1235 / 状态机 76 条断言全过 |
 | `USE_RTOS=0` 裸机对照 | ✅ 仍可编译（厂商超级循环与 APP 解析在 `#else` 分支里原样保留）|
 
 > 新增脚本：[`tools/fw_prep/check_isr_safety.py`](../../tools/fw_prep/check_isr_safety.py) ——
@@ -532,7 +532,7 @@ text 152 B / data 0 B / bss 1544 B
 |---|---|
 | 协议层原生单测 | ✅ **117 条**（帧用例 12 → **16**，含 4 个扩展参数 ID）|
 | 传感器算法原生单测 | ✅ 1235 条 |
-| 巡检状态机原生单测 | ✅ 67 条 |
+| 巡检状态机原生单测 | ✅ 76 条 |
 | **PID 参数打包原生单测（新增）** | ✅ **24 条**（往返逐位一致 / magic 与个数校验 / 离谱值拒绝 / 7 个 ID 无串位）|
 | 固件交叉编译 | ✅ **Flash 62,968 B（6.01%）/ RAM 32,792 B（25.02%）** |
 | 向量表 / 中断安全 / 引脚基线 | ✅ 全部通过（USART1 现为真实链路，ISR 同样**不调用 RTOS API**）|

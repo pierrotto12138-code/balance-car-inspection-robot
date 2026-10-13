@@ -21,6 +21,7 @@
 #include "param_store.h"
 #include "buzzer.h"
 #include "pages.h"
+#include "odom.h"
 #include "show.h"
 
 /* ============================================================================
@@ -504,7 +505,11 @@ static void state_task(void *arg)
 		in.gasAlarm = (uint8_t)((s_mq2.alarm || s_mq135.alarm) ? 1 : 0);
 		in.gasAnyOver = (uint8_t)((s_mq2.overCount > 0 || s_mq135.overCount > 0) ? 1 : 0);
 		in.hwFault = (uint8_t)((Voltage > 0 && Voltage < 1110) ? 1 : 0);
-		in.waypointReached = 0;      /* 里程到位判据：待实测标定后接入（见 README §五）*/
+
+		/* 巡检点到位判据 = **编码器里程**（决策 49）。
+		   红外 J11/J14 是 DNP 未焊，所以不依赖红外；间距在 app_config.h 里配置
+		   （CFG_WAYPOINT_SPACING_MM = 0 表示暂不启用，此时恒为 0，车按指令推进）。 */
+		in.waypointReached = (uint8_t)Odom_WaypointReached();
 
 		(void)Patrol_Tick(&s_patrol, &in);
 
@@ -605,6 +610,10 @@ void App_Start(void)
 	pcfg.taskTimeoutMs = CFG_TASK_TIMEOUT_MS;
 	pcfg.totalWaypoints = CFG_TOTAL_WAYPOINTS;
 	Patrol_Init(&s_patrol, &pcfg);
+
+	/* 里程计（巡检点判据）：间距为 0 时等于"不启用"，车按指令推进 */
+	Odom_SetScaleUmPerCount((uint32_t)(CFG_MM_PER_COUNT * 1000.0f + 0.5f));
+	Odom_Init(CFG_WAYPOINT_SPACING_MM);
 
 	/* ---- 建任务（栈以"字"为单位；1 字 = 4 B）---- */
 	xTaskCreate(comm_task,  "Comm", CFG_STACK_COMM,  0, 3, &h);

@@ -21,6 +21,7 @@ int Voltage_Temp,Voltage_Count,Voltage_All;
    为什么放在中断里做：中断每 5/10 ms 都会跑，是唯一能保证"锁存一置位、电机立刻停"的地方；
    而任务侧写一个 volatile u8 是原子的，不需要任何锁。 */
 extern volatile u8 App_MotorDisable;
+#include "odom.h"           /* 里程累计（纯加法，中断安全）*/
 #endif
 /**************************************************************************
 函数功能：所有的控制代码都在这里面
@@ -50,6 +51,13 @@ int EXTI15_10_IRQHandler(void)
 			}                                                                   //10ms控制一次，为了保证M法测速的时间基准，首先读取编码器数据
 			Encoder_Left=Read_Encoder(2);                                    		//===读取编码器的值
 			Encoder_Right=Read_Encoder(4);                                   		//===读取编码器的值
+#ifdef USE_FREERTOS
+			/* ★ B（固件）2026-10-09（决策 49）：把这一拍（10 ms）的编码器计数累进里程计，
+			   供巡检状态机判断"走到下一个巡检点"。
+			   —— 为什么放在这里：Encoder_Left/Right 是**每 10 ms 的增量**，任务 100 ms 才跑一次，
+			      在任务里采样会漏掉 9/10 的计数；而本函数只有整数加减，放在中断里没有负担。 */
+			Odom_AddCounts(Encoder_Left, Encoder_Right);
+#endif
 	  	Get_Angle(Way_Angle);                                               //===更新姿态	
 			Read_Distane();                                                			//===获取超声波测量距离值
  			Balance_Pwm =balance(Angle_Balance,Gyro_Balance);                   //===平衡PID控制	

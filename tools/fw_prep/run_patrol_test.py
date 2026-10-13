@@ -24,6 +24,7 @@ from toolchain import host_cc, child_env
 SOURCES = [
     os.path.join(FW, "tests", "patrol_test.c"),
     os.path.join(FW, "App", "Task", "patrol.c"),
+    os.path.join(FW, "App", "Task", "odom.c"),
 ]
 
 INCLUDES = [

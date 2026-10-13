@@ -16,8 +16,12 @@
 #include <string.h>
 
 #include "patrol.h"
+#include "odom.h"
 
 static int g_pass = 0, g_fail = 0;
+
+static void scenario_table(void);
+static void scenario_odom(void);
 
 static void ok(int cond, const char *what)
 {
@@ -461,7 +465,89 @@ int main(void)
 	scenario_faults();
 	printf("\n");
 	scenario_table();
+	printf("\n");
+	scenario_odom();
 
 	printf("\n=== 结果：通过 %d 条，失败 %d 条 ===\n", g_pass, g_fail);
 	return g_fail;
+}
+
+/* ---------------------------------------------------------------------------
+ * 场景 6：里程计（巡检点判据）
+ *   为什么测它：巡检点判据以前是 `waypointReached = 0`（硬写死），
+ *   现在改成"编码器里程"，那么"走够一个间距就报一次到位、且只报一次"
+ *   这件事就必须被验证 —— 否则会出现"每 100 ms 都报到位"或"永远不报"。
+ * -------------------------------------------------------------------------*/
+static void scenario_odom(void)
+{
+	int i;
+
+	printf("[场景 6] 里程计（巡检点判据：编码器里程，不依赖红外）\n");
+
+	/* ① 未配置间距（=0）→ 永不到位（相当于"判据未启用"）*/
+	Odom_Init(0u);
+	for (i = 0; i < 100; i++)
+	{
+		Odom_AddCounts(10, 10);
+	}
+	ok(Odom_WaypointReached() == 0, "间距=0（未启用）时不应报到位");
+	ok(Odom_TotalMm() > 0u, "里程仍应照常累计（便于上位机观察）");
+
+	/* ② 间距 1000 mm：换算系数约 0.135 mm/计数（⌀67 mm 轮、1560 counts/圈）
+	      → 1000 mm ≈ 7400 计数（单轮）。这里一点点喂进去，检查"恰好跨过"的那一拍。 */
+	Odom_Init(1000u);
+	{
+		int hit = 0, firstHitAt = -1, extraHits = 0;
+		for (i = 0; i < 200; i++)          /* 200 × 40 计数 × 0.135 ≈ 1080 mm */
+		{
+			Odom_AddCounts(40, 40);
+			if (Odom_WaypointReached())
+			{
+				hit++;
+				if (firstHitAt < 0)
+				{
+					firstHitAt = i;
+				}
+				else
+				{
+					extraHits++;
+				}
+			}
+		}
+		ok(hit == 1, "跨过一个间距应**只**报一次到位");
+		ok(extraHits == 0, "不应重复报到");
+		ok(firstHitAt >= 0 && firstHitAt <= 199, "应在累计到间距时报到位");
+		printf("     首次到位在第 %d 拍（累计约 %u mm）\n", firstHitAt, Odom_TotalMm());
+	}
+
+	/* ③ 到位后自动开始下一段：再走满一个间距应再报一次
+	      （每拍 40 计数 ≈ 5.4 mm，走满 1000 mm 需要约 186 拍，这里给 200 拍余量）*/
+	{
+		int hit2 = 0;
+		for (i = 0; i < 200; i++)
+		{
+			Odom_AddCounts(40, 40);
+			if (Odom_WaypointReached())
+			{
+				hit2++;
+			}
+		}
+		ok(hit2 == 1, "下一段走满后应再报一次到位");
+	}
+
+	/* ④ 左右取平均：单轮打滑不致于把里程放大一倍 */
+	Odom_Init(1000u);
+	Odom_Reset();
+	{
+		uint32_t before = Odom_LegMm();
+		Odom_AddCounts(100, 0);            /* 只有左轮转 */
+		uint32_t after = Odom_LegMm();
+		ok(after > before, "单轮转动也应累计里程");
+		ok(after <= 10u, "左右取平均：单轮 100 计数不应按 100 计数算（应约 50 计数 ≈ 6~7 mm）");
+		printf("     单轮 100 计数 → 本段 %u mm（平均法）\n", after);
+	}
+
+	/* ⑤ Reset 清零 */
+	Odom_Reset();
+	ok(Odom_LegMm() == 0u && Odom_TotalMm() == 0u, "Odom_Reset 应把里程清零");
 }

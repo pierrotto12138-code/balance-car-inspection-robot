@@ -27,9 +27,27 @@
 
 /* ------------------------------------------------------------------ 配置默认值 */
 
+/* ★ RL（负载电阻）为什么是"待实测"而不是拍一个值（2026-10-09）
+ *
+ *   RL 直接进 Rs 的换算：`Rs = (VCC × RL)/Vao − RL`，所以 **RL 错 → Rs 错 → ppm 整体偏一个系数**。
+ *   市面上的 MQ 模块 RL 并不统一，两个真实数据点：
+ *     · MQUnifiedsensor 库默认 `RL = 10 kΩ`（其示例以 10 k 为基准标定）；
+ *     · `RobotnikAutomation/mq_gas_sensors` 项目在源码里把 RL 改成 **1 kΩ**，
+ *       因为**它那块模块的负载电阻实测就是 1 kΩ**。
+ *   我们也查过网上各种模块资料，**没有权威统一值**（常见 1 k / 4.7 k / 10 k 都有；
+ *   带电位器的板子还可以调）—— 所以正解是**量自己的板子**：
+ *
+ *   万用表实测方法（断电、模块不接电）：
+ *     ① 量 `AOUT` 对 `GND` 的电阻 ≈ RL（比较器输入是高阻，几乎不并联影响）；
+ *     ② 若板上有电位器且量出的值随旋钮变化，说明**电位器就是 RL**，
+ *        调到某个位置后记下该值并写进这里（`setRL` 的等价物就是本字段）。
+ *
+ *   参考：docs/research/MQ气体传感器开源实现.md §5.2
+ *   ⚠️ 在实测之前，Rs/ppm 只能当"相对指数"看，**Rs/R0 的相对比较不受 RL 影响**（R0 同系数抵消）。
+ */
 void Gas_DefaultCfg_MQ2(GasChannelCfg *cfg)
 {
-	cfg->rlOhm = 10000;          /* ⚠️ 到货后必须实测模块上的负载电阻（研究文档 §5.2） */
+	cfg->rlOhm = 10000;          /* ⚠️ [待实测] 量 AOUT-GND 的电阻后改这里（见上方说明） */
 	cfg->vccMv = 5000;
 	cfg->adcVrefMv = 3300;
 	cfg->divTopOhm = 10000;      /* R10 */
@@ -41,7 +59,7 @@ void Gas_DefaultCfg_MQ2(GasChannelCfg *cfg)
 
 void Gas_DefaultCfg_MQ135(GasChannelCfg *cfg)
 {
-	cfg->rlOhm = 10000;
+	cfg->rlOhm = 10000;          /* ⚠️ [待实测] 同上；MQ-135 常见模块也有 1 kΩ 版本 */
 	cfg->vccMv = 5000;
 	cfg->adcVrefMv = 3300;
 	cfg->divTopOhm = 10000;      /* R12 */

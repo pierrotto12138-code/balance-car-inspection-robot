@@ -65,7 +65,7 @@ node scripts/bridge-server.mjs        # 端口 49620
 | `fw_prep/run_sensor_test.py` | **★ 传感器算法原生单元测试**：编译 `firmware/App/Sensor/{gas,dht11,sensor_report}.c` + `firmware/tests/sensor_test.c` 并跑（**1235 条断言**，含五级中间量比对、迟滞、饱和钳位） | **每次改传感器算法后** |
 | `fw_prep/run_param_test.py` | **★ PID 参数打包原生单测**：编译 `firmware/App/Control/param_pack.c` + `tests/param_test.c`（**24 条断言**：float 位型往返一致 / magic 与个数校验 / 离谱值拒绝 / 7 个 ID 无串位） | 改调参或持久化后 |
 | `fw_prep/tune.py` | **★ 有线调参工具（PC 端）**：`--selftest` 用冻结向量自检自己的编解码；`--dump` 回读 7 个参数、`--set ID=VALUE` 在线改、`--save/--load` 存载 Flash、`--observe N --csv` **100 Hz 观测 + 姿态统计（标准差/零穿越→振荡频率）**、`--monitor` 常规监视、`--estop/--start/--stop`；`--replay` 可离线回放日志 | 板子到货后整定 PID；也是上位机调参界面的参考实现 |
-| `fw_prep/run_patrol_test.py` | **★ 巡检状态机原生单元测试**：编译 `firmware/App/Task/patrol.c` + `firmware/tests/patrol_test.c` 并跑（**67 条断言**，脚本化时间线：完整任务链 / 失联 / 急停 / 故障超时 / 迁移表） | **每次改状态机或安全策略后** |
+| `fw_prep/run_patrol_test.py` | **★ 巡检状态机原生单元测试**：编译 `firmware/App/Task/patrol.c` + `firmware/tests/patrol_test.c` 并跑（**76 条断言**，脚本化时间线：完整任务链 / 失联 / 急停 / 故障超时 / 迁移表） | **每次改状态机或安全策略后** |
 | **`fw_prep/run_all_tests.py`** | **★★ 一键跑完 B 阶段全部离线核验**：三个原生单测 + 交叉编译 + 向量表核验 + 引脚基线核验，输出汇总表（`--no-build` 可跳过编译） | **提交前 / 每轮收尾** |
 | `fw_prep/host_crosscheck.cpp` | 用 **C 侧真实代码**（`host/src/protocol/*.cpp`）复算测试向量（CRC/帧/流式），与 Python 实现交叉验证 | 协议冻结前 |
 | `fw_prep/check_crc.py` | CRC-16/MODBUS 四条用例的独立复算（Python 从零实现） | 协议冻结前 |
