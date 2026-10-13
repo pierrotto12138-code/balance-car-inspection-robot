@@ -28,13 +28,18 @@
 /* 创建任务并进入调度（不返回）。SUCCESS 时永不返回 */
 void App_Start(void);
 
-/* 输出 0/1：调度器是否已在运行（供 delay_ms 等判断）*/
-int  App_SchedulerRunning(void);
+/* 输出 1 表示"已把让出 CPU 的毫秒延时钩子注入 System 层"（等价于调度器已启动）。
+ * ★ 只给**固件内部排障/自检**用；业务代码不该依赖系统处于哪个阶段。
+ *   （P2 分层整改：原先的 `App_SchedulerRunning()`/`App_DelayMs()` 已删除，
+ *     改为 `System/delay` 侧的 `Delay_SetMsHook()` 注入，依赖方向 App → System。）*/
+int  App_DelayHookInstalled(void);
 
-/* 供 delay_ms 使用：把毫秒延时转成 vTaskDelay */
-void App_DelayMs(unsigned short nms);
-
-/* 各任务的"心跳"计数（便于用调试器确认任务真的在跑）*/
+/* 各任务的"心跳"计数（idx 取 APP_TASK_*）。
+ * ★ 这是**外部工具 / 调试器入口，固件内部不调用**：
+ *     ① 排障时用调试器 `watch` 它确认任务真的在跑（见 docs/design_hardware/上板自检清单.md）；
+ *     ② 协议 0x1F/诊断帧里的 `taskTicks[]` 走的是 `App_GetDiag()`，与它取同一个数组。
+ *   保留它是因为**排障价值**，不是因为有人调用 —— 按编码规范 §二"死代码零容忍"，
+ *   这类函数必须在头文件注明用途，否则读代码的人无法区分"死代码"与"工具入口"。*/
 unsigned long App_TaskTicks(int idx);
 
 /* 任务索引 */

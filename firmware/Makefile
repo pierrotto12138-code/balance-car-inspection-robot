@@ -55,7 +55,7 @@ INCS     := -IDrivers/CMSIS \
             -IDrivers/FWLIB/inc \
             -IUser \
             -ISystem/sys -ISystem/delay -ISystem/usart -ISystem/retarget \
-            -IApp/Control -IApp/Config -IApp/Filter -IApp/Ui \
+            -IApp/Board -IApp/Control -IApp/Config -IApp/Filter -IApp/Ui \
             -IApp/Sensor -IApp/Task \
             -IApp/Sensor/MPU6050 -IApp/Sensor/DMP -IApp/Comms -IApp/Comms/DataScope \
             -IDrivers/BSP/ADC -IDrivers/BSP/CAN -IDrivers/BSP/ENCODER \
@@ -147,6 +147,7 @@ STRICT_WARN := -Wconversion -Wsign-conversion -Wshadow -Wcast-qual -Wdouble-prom
                -Wundef -Wmissing-prototypes -Wstrict-prototypes -Wold-style-definition \
                -Wredundant-decls -Wformat=2
 STRICT_SRC  := App/Task/app_tasks.c App/Task/patrol.c App/Task/odom.c \
+               App/Board/board_state.c \
                App/Comms/protocol.c App/Comms/crc16.c App/Comms/ringbuf.c App/Comms/comm_link.c \
                App/Sensor/gas.c App/Sensor/dht11.c App/Sensor/dht11_hw.c \
                App/Sensor/sensor_report.c App/Sensor/sensor_adc.c \

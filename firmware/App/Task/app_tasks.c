@@ -18,6 +18,7 @@
 #include "sensor_report.h"
 #include "patrol.h"
 #include "param_store.h"
+#include "board_state.h"
 #include "buzzer.h"
 #include "pages.h"
 #include "odom.h"
@@ -26,19 +27,18 @@
 /* ============================================================================
  * 厂商全局量（定义在 main.c / control.c）—— 只读，用于上报
  *
- * ★ 2026-10-09 复查整改：这里**不再逐个 `extern`**。
- *   这些量（Angle_Balance / Gyro_* / Encoder_* / Moto1,2 / Voltage / Distance /
- *   Flag_Show / Flag_Stop / 以及 PID 增益与 Zhongzhi、Turn_Kp/Kd）都已由
- *   `System/sys/sys.h` 统一声明，本文件通过 `#include "sys.h"` 拿到即可。
- *   重复声明会触发 `-Wredundant-decls`（`make strict` 会报），
- *   而且"同一个全局量在 N 个文件里各自声明"正是最容易改漏的地方。
+ * ★ 2026-10-13（P2 结构整改）：App 层**只允许通过 `board_state.h` 访问厂商全局量**。
+ *   `sys.h` 仍然保留，但只用它的**板级类型与位带宏**（`u8`、`LED`）；
+ *   业务数据一律走 board_state 出口：姿态/运动/电压 → `Board_ReadRaw()`，
+ *   停止标志 → `Board_WriteVendorStop()`，PID 增益同步在 `param_store.c`（同样走 board_state）。
+ *   这样"同一个全局量在 N 个文件里各自声明/各自读"的问题被彻底关进一个文件里。
  * ==========================================================================*/
 
 /* ============================================================================
  * 运行标志与任务心跳
  * ==========================================================================*/
 static volatile unsigned long s_ticks[APP_TASK_COUNT];
-static volatile int s_schedRunning = 0;
+static volatile int s_msHookInstalled = 0;
 
 /* ★ 安全停车"真正落到电机"的通道（决策 47）：TaskTask 写、控制中断读。
    中断据此强制 Flag_Stop=1 —— 这样"500 ms 失联 / 急停 / 硬件故障"才真的会停车。
@@ -55,49 +55,33 @@ unsigned long App_TaskTicks(int idx)
 	return s_ticks[idx];
 }
 
-int App_SchedulerRunning(void)
+/* ----------------------------------------------------------------------------
+ * 把"让出 CPU 的毫秒延时"注入 System 层（P2 分层整改，2026-10-13）
+ *
+ * 为什么要有这一层：`System/delay/delay.c` 原先 `extern int App_SchedulerRunning(void)`
+ *   反向回调 App 层 —— 底层依赖上层（依赖倒挂）。现在改成本文件注册函数指针，
+ *   `System/` 只认 `DelayMsHook` 这个类型，不认识 App（见 docs/design_firmware/编码规范.md §一）。
+ * 为什么不需要再加"调度器是否运行"判断：本钩子**只在 `vTaskStartScheduler()` 之前一行**注册，
+ *   所以"钩子非 0" ⟺ "调度器已被启动"；启动阶段的 `delay_ms()` 会自动走忙等（钩子仍为 0）。
+ * --------------------------------------------------------------------------*/
+static void app_delay_ms(uint16_t nms)
 {
-	return s_schedRunning;
+	vTaskDelay(pdMS_TO_TICKS(nms));
 }
 
-void App_DelayMs(unsigned short nms)
+int App_DelayHookInstalled(void)
 {
-	if (s_schedRunning)
-	{
-		vTaskDelay(pdMS_TO_TICKS(nms));
-	}
+	return s_msHookInstalled;
 }
 
 /* ============================================================================
  * 姿态/运动快照（控制中断写、任务读）
- *   说明：对齐的 32 位读写本身是原子的；临界区只是让"一组相关量"尽量取自同一拍。
- *   这些数据**只用于上报/显示**，不参与控制，所以不需要更强的同步。
+ *
+ * ★ P2 结构整改（2026-10-13）：原先这里自己定义 `RawState` 并直接读厂商全局量；
+ *   现在统一走 `board_state.h` 的 `Board_ReadRaw()` ——
+ *   **App 层碰厂商全局量只允许有这一个出口**（临界区也由那一层内部管理），
+ *   以后换板/换厂商只改 `board_state.c`。
  * ==========================================================================*/
-typedef struct
-{
-	float    angle, gyro, gyroTurn;
-	int32_t  encL, encR;
-	int32_t  pwm1, pwm2;
-	int32_t  voltage;
-	uint32_t dist;
-	uint8_t  stopped;
-} RawState;
-
-static void state_read(RawState *out)
-{
-	taskENTER_CRITICAL();
-	out->angle    = Angle_Balance;
-	out->gyro     = Gyro_Balance;
-	out->gyroTurn = Gyro_Turn;
-	out->encL     = Encoder_Left;
-	out->encR     = Encoder_Right;
-	out->pwm1     = Moto1;
-	out->pwm2     = Moto2;
-	out->voltage  = Voltage;
-	out->dist     = Distance;
-	out->stopped  = Flag_Stop;
-	taskEXIT_CRITICAL();
-}
 
 /* ============================================================================
  * 跨任务共享状态（都在任务上下文访问）
@@ -245,17 +229,13 @@ static void on_frame(const ProtoFrame *f, void *user)
 		if (f->cmd == PROTO_DOWN_ESTOP)
 		{
 			App_MotorDisable = 1u;
-			taskENTER_CRITICAL();
-			Flag_Stop = 1;
-			taskEXIT_CRITICAL();
+			Board_WriteVendorStop(1);        /* 权威是 App_MotorDisable，Flag_Stop 只是执行器 */
 		}
 		else if (accepted && s_patrol.safetyStop == 0 &&
 		         ((f->cmd == PROTO_DOWN_TASK && f->len >= 1 && f->data[0] == PROTO_TASK_PATROL) ||
 		          (f->cmd == PROTO_DOWN_MOTION && f->len >= 5 && f->data[4] != 0)))
 		{
-			taskENTER_CRITICAL();
-			Flag_Stop = 0;                   /* 显式使能：重新允许电机出力 */
-			taskEXIT_CRITICAL();
+			Board_WriteVendorStop(0);        /* 显式使能：重新允许电机出力 */
 		}
 		break;
 	}
@@ -279,7 +259,7 @@ static void comm_task(void *arg)
 	(void)arg;
 	for (;;)
 	{
-		RawState st;
+		BoardRawState st;
 		ProtoTaskState ts;
 		ProtoPose pose;
 		ProtoMotion mot;
@@ -313,7 +293,7 @@ static void comm_task(void *arg)
 			send_frame_all(PROTO_UP_EVENT, data, 5);
 		}
 
-		state_read(&st);
+		Board_ReadRaw(&st);
 
 		/* 3) 调参观测模式：有线链路额外以 100 Hz 上报姿态与运动（PID 整定用）*/
 		if (s_tuningMode)
@@ -327,10 +307,10 @@ static void comm_task(void *arg)
 			Proto_Pack_Pose(&pose, payload);
 			send_frame(COMM_LINK_WIRE, PROTO_UP_POSE, payload, 12);
 
-			mot.speedL = (int16_t)((float)st.encL * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
-			mot.speedR = (int16_t)((float)st.encR * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
-			mot.pwm = (int16_t)((st.pwm1 + st.pwm2) / 2);
-			mot.distCm = (uint16_t)st.dist;
+			mot.speedL = (int16_t)((float)st.encLeft * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
+			mot.speedR = (int16_t)((float)st.encRight * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
+			mot.pwm = (int16_t)((st.pwmLeft + st.pwmRight) / 2);
+			mot.distCm = (uint16_t)st.distance;
 			mot.avoidBits = 0;
 			Proto_Pack_Motion(&mot, payload);
 			send_frame(COMM_LINK_WIRE, PROTO_UP_MOTION, payload, 9);
@@ -356,10 +336,10 @@ static void comm_task(void *arg)
 				Proto_Pack_Pose(&pose, payload);
 				send_frame_all(PROTO_UP_POSE, payload, 12);
 
-				mot.speedL = (int16_t)((float)st.encL * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
-				mot.speedR = (int16_t)((float)st.encR * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
-				mot.pwm = (int16_t)((st.pwm1 + st.pwm2) / 2);
-				mot.distCm = (uint16_t)st.dist;
+				mot.speedL = (int16_t)((float)st.encLeft * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
+				mot.speedR = (int16_t)((float)st.encRight * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
+				mot.pwm = (int16_t)((st.pwmLeft + st.pwmRight) / 2);
+				mot.distCm = (uint16_t)st.distance;
 				mot.avoidBits = 0;
 				Proto_Pack_Motion(&mot, payload);
 				send_frame_all(PROTO_UP_MOTION, payload, 9);
@@ -496,7 +476,10 @@ static void state_task(void *arg)
 	for (;;)
 	{
 		uint32_t now = CommLink_NowMs();
+		BoardRawState bs;
 		s_ticks[APP_TASK_STATE]++;
+
+		Board_ReadRaw(&bs);                            /* 电压走 board_state 出口（P2 结构整改）*/
 
 		memset(&in, 0, sizeof(in));
 		in.nowMs = now;
@@ -504,7 +487,7 @@ static void state_task(void *arg)
 		in.calibrating = (s_calibDone == 0) ? 1 : 0;   /* ★ 由 GasTask 的标定进度决定 */
 		in.gasAlarm = (uint8_t)((s_mq2.alarm || s_mq135.alarm) ? 1 : 0);
 		in.gasAnyOver = (uint8_t)((s_mq2.overCount > 0 || s_mq135.overCount > 0) ? 1 : 0);
-		in.hwFault = (uint8_t)((Voltage > 0 && Voltage < 1110) ? 1 : 0);
+		in.hwFault = (uint8_t)((bs.voltage > 0 && bs.voltage < 1110) ? 1 : 0);
 
 		/* 巡检点到位判据 = **编码器里程**（决策 49）。
 		   红外 J11/J14 是 DNP 未焊，所以不依赖红外；间距在 app_config.h 里配置
@@ -542,10 +525,14 @@ static void ui_task(void *arg)
 	for (;;)
 	{
 		int beepOn;
+		BoardRawState bs;
 
 		s_ticks[APP_TASK_UI]++;
 
-		if (Flag_Show == 0)
+		/* 厂商 `Flag_Show`：0 = 用 OLED/APP 界面；非 0 = 让位给 DataScope 波形通道。
+		   ★ 走 board_state 出口读，不直接碰厂商全局量（P2 结构整改）。 */
+		Board_ReadRaw(&bs);
+		if (bs.showFlag == 0)
 		{
 			if (Flag_Page == PAGE_VENDOR)
 			{
@@ -621,7 +608,10 @@ void App_Start(void)
 	xTaskCreate(state_task, "Task", CFG_STACK_STATE, 0, 3, &h);
 	xTaskCreate(ui_task,    "Ui",   CFG_STACK_UI,    0, 1, &h);
 
-	s_schedRunning = 1;
+	/* ★ P2 分层整改：把"让出 CPU 的延时"注入 System 层，紧接着启动调度器。
+	   钩子注册 ⟺ 调度器已启动；注册之前的 delay_ms() 仍走忙等，行为与原来一致。 */
+	Delay_SetMsHook(app_delay_ms);
+	s_msHookInstalled = 1;
 	vTaskStartScheduler();
 
 	/* 调度器启动失败（通常是堆不够）：LED 常亮，便于调试器定位 */
@@ -637,26 +627,26 @@ void App_Start(void)
 
 int App_GetTelemetry(AppTelemetry *out)
 {
-	RawState st;
+	BoardRawState st;
 
 	if (out == 0)
 	{
 		return -1;
 	}
-	state_read(&st);
+	Board_ReadRaw(&st);
 
 	out->pitchX100 = (int16_t)(st.angle * 100.0f);
 	out->gyroX100 = (int16_t)(st.gyro * 100.0f);
 	out->gyroTurnX100 = (int16_t)(st.gyroTurn * 100.0f);
-	out->encLeft = st.encL;
-	out->encRight = st.encR;
-	out->speedLmmS = (int16_t)((float)st.encL * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
-	out->speedRmmS = (int16_t)((float)st.encR * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
-	out->pwmLeft = (int16_t)st.pwm1;
-	out->pwmRight = (int16_t)st.pwm2;
-	out->distCm = (uint16_t)st.dist;
+	out->encLeft = st.encLeft;
+	out->encRight = st.encRight;
+	out->speedLmmS = (int16_t)((float)st.encLeft * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
+	out->speedRmmS = (int16_t)((float)st.encRight * CFG_MM_PER_COUNT / CFG_MS_PER_ENCODER_PERIOD);
+	out->pwmLeft = (int16_t)st.pwmLeft;
+	out->pwmRight = (int16_t)st.pwmRight;
+	out->distCm = (uint16_t)st.distance;
 	out->voltageX100 = st.voltage;
-	out->stopped = st.stopped;
+	out->stopped = st.vendorStop;
 	return 0;
 }
 

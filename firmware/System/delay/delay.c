@@ -25,7 +25,16 @@
 
 static u8  fac_us=0;							//us延时倍乘数			   
 static u16 fac_ms=0;							//ms延时倍乘数,在os下,代表每个节拍的ms数
-	
+
+/* ★ B 2026-10-13（P2 分层整改）：毫秒延时的"让出 CPU"钩子，由 App 层注入（见 delay.h 说明）。
+   默认 0 = 忙等，所以纯裸机构建与调度器启动前的行为**一字不变**。*/
+static DelayMsHook s_msHook = 0;
+
+void Delay_SetMsHook(DelayMsHook hook)
+{
+	s_msHook = hook;
+}
+
 #if SYSTEM_SUPPORT_OS							//如果SYSTEM_SUPPORT_OS定义了,说明要支持OS了(不限于UCOS).
 
 #ifdef 	OS_CRITICAL_METHOD						//OS_CRITICAL_METHOD定义了,说明要支持UCOSII				
@@ -196,19 +205,18 @@ void delay_xms(u16 nms)
 }
 
 // 延时 nms 毫秒
-//  ★ 调度器跑起来之后用 vTaskDelay 让出 CPU（期间其它任务照常运行）；
-//    启动阶段（调度器未运行）或纯裸机构建则忙等。
+//  ★ 调度器跑起来之后用注入的钩子（App 层注册 → vTaskDelay）让出 CPU；
+//    启动阶段（钩子还是 0）或纯裸机构建则忙等。
+//  ★ 2026-10-13（P2 分层整改）：原先这里 `extern int App_SchedulerRunning(void)` 直接
+//    回调 App 层 —— 底层 include 上层、依赖倒挂。现改为 `Delay_SetMsHook()` 注入函数指针，
+//    依赖方向恢复单向 App → System（见 docs/design_firmware/编码规范.md §一）。
 void delay_ms(u16 nms)
 {
-#if defined(USE_FREERTOS)
-	extern int App_SchedulerRunning(void);
-	if (App_SchedulerRunning())
+	if (s_msHook != 0)
 	{
-		extern void App_DelayMs(u16 nms);
-		App_DelayMs(nms);                    // 由 App 层转成 vTaskDelay（避免本文件依赖 FreeRTOS 头）
+		s_msHook(nms);
 		return;
 	}
-#endif
 	while (nms--)
 	{
 		delay_us(1000);

@@ -9,8 +9,6 @@
 #define BUZZER_PORT  GPIOC
 #define BUZZER_PIN   GPIO_Pin_5
 
-static int s_on = 0;
-
 void Buzzer_Init(void)
 {
 	GPIO_InitTypeDef gi;
@@ -29,13 +27,11 @@ void Buzzer_Init(void)
 void Buzzer_On(void)
 {
 	GPIO_ResetBits(BUZZER_PORT, BUZZER_PIN);     /* 低电平 = 响 */
-	s_on = 1;
 }
 
 void Buzzer_Off(void)
 {
 	GPIO_SetBits(BUZZER_PORT, BUZZER_PIN);
-	s_on = 0;
 }
 
 void Buzzer_Set(int on)
@@ -48,9 +44,4 @@ void Buzzer_Set(int on)
 	{
 		Buzzer_Off();
 	}
-}
-
-int Buzzer_IsOn(void)
-{
-	return s_on;
 }

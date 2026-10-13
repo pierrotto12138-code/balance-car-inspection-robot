@@ -26,9 +26,6 @@ int  ParamStore_Load(void);
 /* 把当前参数写入 Flash；成功返回 0 */
 int  ParamStore_Save(void);
 
-/* 当前参数的内存镜像（供 0x24 回读、上位机查询）*/
-const ParamSet *ParamStore_Current(void);
-
 /* 由参数 ID 写一个值（并同步到厂商全局量）；返回 0=成功 */
 int  ParamStore_SetOne(uint8_t id, float value);
 

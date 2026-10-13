@@ -1,41 +1,30 @@
 #include "param_store.h"
 #include "app_config.h"
+#include "board_state.h"
 #include "stmflash.h"
-#include "sys.h"
 
 /* 见 param_store.h：Flash 持久化（整扇区擦除 → 只在保存时调用）。
  *
  * ★ "参数表 ↔ 厂商全局量"的同步放在本文件（STM32 侧），
- *   这样 param_pack.c 保持纯逻辑、可在 PC 上单测。 */
-
-/* 厂商全局量（定义在 main.c / control.c）由 `sys.h` 统一声明 ——
-   这里不再各自 `extern`，否则会触发 -Wredundant-decls（2026-10-09 复查整改）。
-   `Turn_Kp`/`Turn_Kd` 是决策 44 新增的全局量，也已并入 sys.h。*/
+ *   这样 param_pack.c 保持纯逻辑、可在 PC 上单测。
+ * ★ P2 结构整改（2026-10-13）：具体的厂商全局量读写委托给 `board_state.c` ——
+ *   本文件不再 include `sys.h`、也不再自己碰 `Balance_Kp` 之类的全局量，
+ *   App 层访问厂商状态**只有 board_state 一个出口**。 */
 
 static ParamSet s_params;
 
 /* 参数表 → 厂商全局量（控制中断下一拍即生效）*/
 static void params_to_globals(const ParamSet *p)
 {
-	Balance_Kp = p->balanceKp;
-	Balance_Kd = p->balanceKd;
-	Velocity_Kp = p->velocityKp;
-	Velocity_Ki = p->velocityKi;
-	Zhongzhi = p->zhongzhi;
-	Turn_Kp = p->turnKp;
-	Turn_Kd = p->turnKd;
+	Board_SyncPidParams(p->balanceKp, p->balanceKd, p->velocityKp, p->velocityKi,
+	                    p->zhongzhi, p->turnKp, p->turnKd);
 }
 
 /* 厂商全局量 → 参数表（保存时以"实际生效值"为准）*/
 static void params_from_globals(ParamSet *p)
 {
-	p->balanceKp = Balance_Kp;
-	p->balanceKd = Balance_Kd;
-	p->velocityKp = Velocity_Kp;
-	p->velocityKi = Velocity_Ki;
-	p->zhongzhi = Zhongzhi;
-	p->turnKp = Turn_Kp;
-	p->turnKd = Turn_Kd;
+	Board_CapturePidParams(&p->balanceKp, &p->balanceKd, &p->velocityKp, &p->velocityKi,
+	                       &p->zhongzhi, &p->turnKp, &p->turnKd);
 }
 
 void ParamStore_InitDefaults(void)
@@ -89,11 +78,6 @@ int ParamStore_Save(void)
 		}
 	}
 	return 0;
-}
-
-const ParamSet *ParamStore_Current(void)
-{
-	return &s_params;
 }
 
 int ParamStore_SetOne(uint8_t id, float value)
