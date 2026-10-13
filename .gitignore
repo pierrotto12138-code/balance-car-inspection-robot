@@ -116,3 +116,6 @@ tools/fw_prep/smoke_main.c
 tools/fw_prep/out/
 __pycache__/
 *.pyc
+
+# 编辑器代码索引产物（由 make compile_commands 生成，本机专用）
+firmware/compile_commands.json

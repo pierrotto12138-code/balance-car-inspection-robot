@@ -54,6 +54,9 @@ node scripts/bridge-server.mjs        # 端口 49620
 
 | 文件 | 用途 | 何时用 |
 |---|---|---|
+| `fw_prep/gen_compile_commands.py` | **生成 `compile_commands.json`**（编辑器跳转/补全用）：抓 `make -n -B all` 里真实的编译命令，不真编译、不依赖 bear/compiledb。用法 `cd firmware && make compile_commands` | 想用 VS Code/clangd 读代码时（一次即可，产物不入库）|
+| `fw_prep/normalize_whitespace.py` | **纯空白规范化**（LF + 去行尾空白 + 混合缩进折 Tab）：**白名单限定作用域**（厂商目录一律不碰），且带"非空白字符零变化"安全阀 | 整合排版时（幂等，可反复跑）|
+| `fw_prep/audit_refactor.py` | **重构安全审计**：逐文件比较两个提交，把改动分成"纯排版"与"有真实内容"，并断言**控制中断/厂商库/内核**里没有真实改动 | 任何一次大范围排版/结构调整之后 |
 | `fw_prep/toolchain.py` | **★ 工具链探测（通用化的关键）**：不写死任何安装路径 —— PC 端 C 编译器按 `FW_HOST_CC` → `PATH`(gcc/cc/clang) → `QTDIR` 下的 MinGW 查找；交叉工具链按 `FW_ARM_BIN` / `STM32CUBECLT` → `PATH` → 常见安装根查找。**装在哪都行**，并负责把编译器目录带进子进程 `PATH`（MinGW 的 `cc1` 需要同目录 DLL） | 其他脚本自动引用；换机器/报"找不到编译器"时先跑它自检 |
 | `fw_prep/vendor_baseline.py` | 把厂商基线源码 vendor 进 `firmware/`：**GBK→UTF-8** + 目录映射 + 报告转码失败 | 重建/升级 `firmware/` 时（`--apply` 才写盘） |
 | `fw_prep/gen_startup.py` | **生成 GCC 启动文件**：从 `User/stm32f4xx.h` 的 **IRQn 枚举**取名，98 个向量，杜绝手抄中断名 | 换芯片/改 CMSIS 头后 |

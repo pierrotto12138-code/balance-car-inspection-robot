@@ -145,17 +145,51 @@
 | 固件改造（B） | 🔶 **P0~P5（离线部分）完成 + 复查/接口完善** —— `firmware/` 用 GCC 一键构建出 `.hex`；**协议 117 + 传感器 1235 + 状态机 76 + 调参 29 条断言全过；四任务已跑起来、程序说明文档已出**（Python ↔ 上位机 ↔ 固件三方交叉验证），见 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md) |
 | 上位机界面（C） | 🔶 骨架 |
 
-> **下一步**：**B 的离线部分已完成**（见 `docs/design_firmware/程序说明文档.md`），剩余为**到货实测**；C 的上位机界面待推进；A1 的焊接调试见 `docs/design_hardware/焊接调试手册.md`。原计划中
-> 以及 A1 的**焊接调试预案**（见 `docs/design_hardware/焊接调试手册.md`）。
+> **下一步**：**B 的离线部分已完成**（见 `docs/design_firmware/程序说明文档.md`），剩余为**到货实测**；
+> C 的上位机界面待推进；A1 的焊接与上板自检见 `docs/design_hardware/焊接调试手册.md` 与
+> [`docs/design_hardware/上板自检清单.md`](docs/design_hardware/上板自检清单.md)。
 
 ---
 
-## 七、构建
+## 七、构建与开发环境
 
-- **固件**：Keil / CubeMX（`firmware/`）
-- **上位机**：Qt 6.11.2 + CMake + Ninja，详见 `host/README.md`
-- **PCB 工程**：嘉立创EDA 专业版（`…\LCEDA-Pro\projects\参考01_copy`）；
-  用 EDA API 桥接做自动化核查的脚本在 `tools/`（见 `tools/README.md`）
+### 7.1 各部分的构建方式
+
+| 部分 | 怎么构建 / 打开 | 说明 |
+|---|---|---|
+| **固件** | `cd firmware && make`（默认带 FreeRTOS，产出 `build/MiniBalance.hex`）；`make USE_RTOS=0` 出裸机对照版；`make size` 看占用；`make strict` 严格告警自检 | **不用 Keil**（决策 34）：`arm-none-eabi-gcc` + Makefile。`make flash` 走 ST-Link |
+| **上位机** | Qt 6.11.2 + CMake + Ninja，详见 `host/README.md` | |
+| **PCB 工程** | 嘉立创EDA 专业版（`…\LCEDA-Pro\projects\参考01_copy`）| 自动化核查脚本在 `tools/`（见 `tools/README.md`）|
+
+### 7.2 ★ 想"看代码 / 改代码"用什么
+
+**结论：用 VS Code（+ STM32 官方扩展）；不要用已装的 Visual Studio 2022。**
+
+| 候选 | 适不适合本项目 | 原因 |
+|---|---|---|
+| **VS Code + C/C++ + STM32 VS Code Extension** | ✅ **推荐** | 已经装了 `STM32CubeCLT`（含 arm-gcc / gdb / STM32_Programmer_CLI）与 `ST-LINK_gdbserver` —— ST 的扩展正是对接这套工具链：**跳转/补全（IntelliSense）+ 一键构建 + SWD 断点调试**。轻量、可脚本化、`.vscode/` 能随仓库共享 |
+| CLion / STM32CubeIDE | 🔶 也可以 | 开箱即用的索引与调试，但体积大、和 `Makefile` 工程要额外配置，本项目没采用 |
+| **Visual Studio 2022（本机已装的 C++ 工作负载）** | ❌ **不建议** | 它是 **MSVC** 工具链、面向 Windows/x64 程序；本项目是 **ARM 交叉编译 + Makefile + 自定义链接脚本**，VS 认不出这套构建，也没有 STM32 的烧录/调试集成。**用它读代码只会得到一堆红波浪线**（找不到 `stm32f4xx.h`、`FreeRTOS.h`）|
+| Keil MDK | ❌ 不装 | 决策 34 已定：交付不用 Keil，实际用 GCC 构建 |
+
+**为什么"能跳转、能补全"值得单独配一次**：本工程有 8 层 include 路径（`-IApp/...`、`-IDrivers/BSP/...`、
+`-IMiddlewares/FreeRTOS/include`…）和一堆编译宏（`USE_FREERTOS`、`STM32F40_41xxx`）。
+编辑器若不知道这些，`Gas_Update()` / `Patrol_Tick()` 这类符号就跳不过去 ——
+解决办法是让它读一份 `compile_commands.json`（由 Makefile 的编译命令生成，**不需要装额外软件**）。
+
+**动手三步**（VS Code，约 10 分钟）：
+
+```powershell
+winget install --id Microsoft.VisualStudioCode -e          # ① 装 VS Code
+code --install-extension ms-vscode.cpptools                # ② C/C++（补全/跳转）
+code --install-extension STMicroelectronics.stm32-vscode-extension   # ②' STM32 构建+调试（可选）
+cd <仓库根>\firmware
+make compile_commands                                        # ③ 生成编译数据库（见下方说明）
+```
+
+> 装完用 VS Code 打开 `<仓库根>` 文件夹即可：仓库里已带 [`.vscode/settings.json`](.vscode/settings.json)（指向 `firmware/compile_commands.json`）与 [`.vscode/extensions.json`](.vscode/extensions.json)（推荐扩展），
+> 跳转/补全会按**真实的编译参数**解析（含所有 `-I` 与 `-D`），不会出现假报错。
+> 调试需要 ST-Link 时，用 ST 扩展生成的 `launch.json`（本机 `ST-LINK_gdbserver` 已就绪）。
 
 ---
 

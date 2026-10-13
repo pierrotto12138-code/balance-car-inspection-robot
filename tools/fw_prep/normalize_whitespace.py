@@ -18,7 +18,14 @@ import os
 import re
 import sys
 
-ROOT = r"D:\260921Task\firmware"
+# ★ 路径不写死：从脚本自身位置推出 firmware/（本脚本位于 <仓库根>/tools/fw_prep/）
+#   —— 原先这里写死了某一台机器的绝对路径，违反"仓库通用化"约定（2026-10-13 修正）。
+#   也可以显式指定目标目录：python normalize_whitespace.py <firmware 目录>
+ROOT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "firmware")
+if len(sys.argv) > 1 and os.path.isdir(sys.argv[1]):
+    ROOT = os.path.abspath(sys.argv[1])
 EXTS = {".c", ".h"}
 
 # ★ 作用域白名单：**只碰我们自己的 / 我们手改过的文件**。

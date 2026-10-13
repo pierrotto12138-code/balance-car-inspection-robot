@@ -104,7 +104,13 @@ OBJECTS += $(addprefix $(BUILD)/,$(notdir $(ASM_SOURCES:.S=.o)))
 vpath %.S $(sort $(dir $(ASM_SOURCES)))
 
 # ============================================================================
-.PHONY: all clean size flash strict
+# ★ 显式声明默认目标：Make 取"文件里第一个目标"当默认，一旦有人在 all 之前
+#   插入别的目标（本文件就发生过一次：compile_commands 插到 all 前面，
+#   结果裸跑 `make` 变成只生成 JSON、**不再构建固件**），行为就悄悄变了。
+#   写死这一行，插入新目标就不会再踩。
+.DEFAULT_GOAL := all
+
+.PHONY: all clean size flash strict compile_commands
 
 all: $(BUILD)/$(TARGET).elf $(BUILD)/$(TARGET).hex $(BUILD)/$(TARGET).bin
 
@@ -135,6 +141,18 @@ size: $(BUILD)/$(TARGET).elf
 # ST-Link 下载（需要接 ST-Link；串口 ISP 请用 FlyMcu 载入 .hex）
 flash: $(BUILD)/$(TARGET).hex
 	STM32_Programmer_CLI -c port=SWD -d $< -v -rst
+
+# ----------------------------------------------------------------------------
+# 生成 compile_commands.json（给编辑器做代码跳转/补全用）
+#   做法：抓 `make -n` 里真实的编译命令行，不真编译、不依赖 bear/compiledb。
+#   编辑器（VS Code + C/C++ 或 clangd）读它之后，`-I`/`-D` 与真实构建完全一致，
+#   不会出现"找不到 stm32f4xx.h / FreeRTOS.h"的假报错。
+#   用法：make compile_commands  →  firmware/compile_commands.json（本机生成物，已 gitignore）
+#   ★ 注意：本目标必须留在 `all` **之后**（Make 的默认目标是文件里第一个目标；
+#     上面已用 .DEFAULT_GOAL 兜底，但保持这个顺序更直观）。
+# ----------------------------------------------------------------------------
+compile_commands:
+	python ../tools/fw_prep/gen_compile_commands.py
 
 # ----------------------------------------------------------------------------
 # 严格告警自检：只编**我们自研/手改**的文件，且把厂商目录用 -isystem 屏蔽掉
