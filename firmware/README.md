@@ -257,3 +257,19 @@ python ..\tools\fw_prep\tune.py -p COM5 --save        # 存 Flash
 | 2026-10-09 | **P1 完成**：`App/Comms/{crc16,protocol,ringbuf}` + `tests/proto_test.c`；协议模块只依赖 `<stdint.h>`，可在 PC 原生编译测试（`python ..\tools\fw_prep\run_proto_test.py` → 当时 97 条断言全过）；与上位机、Python 三方交叉验证一致（**该套件 2026-10-09 第二轮复查后增至 117 条**）|
 | 2026-10-13 | **真机联调第一轮（决策 60/61）**：新增 `0x15` 诊断帧；修低压误触发（三级判据）与厂商 `APP_Show()` 污染链路；DTR/RTS 陷阱；安全通道事件码 `0x08/0x09/0x0A`（状态机断言 76 → **80**）；协议升至 **v1.2** |
 | 2026-10-15 | **真机联调第二轮（决策 62/63/64）**：修 `control.c` 缺 `app_config.h` 导致条件编译**静默失效**；编码器**分侧**极性开关与去嵌套；`0x20` 运动链路真正实现 + **500 ms 无指令自动停**；`0x24` **范围校验**；新增 **`0x16` 三环实况**与**固件版本字节**（`0xAF`）；`CFG_DEBUG_DISABLE_VELOCITY=1`（调试期摘掉速度环）。现占用 **约 66.5 KB Flash / 约 32.8 KB RAM** |
+
+
+---
+
+## ★ B 部分收工状态（2026-10-15）
+
+- **可稳定平衡**（用户确认）；两轮真机联调完成。
+- **出厂参数（定稿）**：`Balance 300/1`、`Velocity −80/−0.4`、`Zhongzhi 0.5`、`Turn 0/0`
+  —— 由 `app_config.h` 的 `CFG_OVR_*` + `CFG_DEBUG_PARAM_OVERRIDE=1` 上电强制生效
+  （**不依赖 Flash 历史值**；`CFG_DEBUG_DISABLE_VELOCITY` 必须为 **0**）。
+- **方向/极性（软件现场补偿，硬件线不改）**：`MOTOR 1/1`、`ENCODER 0/1`、`TURN_INVERT 0`。
+- **新增可观测量**：`0x15` 诊断帧、`0x16` 三环实况（含 `Moto` vs `CCR`、编码器原始计数、
+  状态位、固件版本字节 `0xAF`）—— 调车请用它，不要靠现象猜符号。
+- **三个"看不见的正确性问题"已修**：`control.c` 缺 `app_config.h`（开关静默失效）、
+  裸 `if` 未加花括号（转圈 + 停车保护被绕过）、启动期两段覆盖互相覆盖（速度环其实没跑）。
+  详见 [`docs/design_firmware/真机联调问题清单.md`](../docs/design_firmware/真机联调问题清单.md) §8。
