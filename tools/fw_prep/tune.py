@@ -38,6 +38,7 @@ HEAD0, HEAD1 = 0xAA, 0x55
 CMD_POSE, CMD_MOTION, CMD_TASK, CMD_EVENT = 0x10, 0x11, 0x12, 0x13
 CMD_ENV, CMD_HEARTBEAT = 0x14, 0x1F
 CMD_DIAG = 0x15        # v1.2 诊断帧：任务 tick / OLED 写计数 / 电压 / 页号（联调用）
+CMD_INTERNALS = 0x16   # v1.2 三环实况：三分量 + 真实 CCR + 编码器原始计数 + 状态位（调参核心）
 CMD_MOTION_DOWN, CMD_TASK_DOWN, CMD_MODE_DOWN, CMD_SURVEY, CMD_PID, CMD_ESTOP = \
     0x20, 0x21, 0x22, 0x23, 0x24, 0x2F
 
@@ -175,6 +176,13 @@ def describe(f):
                 "gearName": GEAR_NAMES.get(d[13], "?")}
     if c == CMD_HEARTBEAT:
         return {"kind": "heartbeat"}
+    if c == CMD_INTERNALS and len(d) >= 20:
+        return {"kind": "internals",
+                "balancePwm": s16(d, 0), "velocityPwm": s16(d, 2), "turnPwm": s16(d, 4),
+                "moto1": s16(d, 6), "moto2": s16(d, 8),
+                "ccrA": u16(d, 10), "ccrB": u16(d, 12),
+                "encLeft": s16(d, 14), "encRight": s16(d, 16),
+                "statusBits": d[18]}
     if c == CMD_DIAG and len(d) >= 16:
         # ★ v1.2 诊断帧：把"屏幕有没有在刷、任务还活着没有、电压多少"变成可测数据
         return {"kind": "diag",
@@ -507,6 +515,19 @@ def monitor(link, seconds):
                 elif k == "task":
                     print(f"  TASK stage={d['phaseName']} task={d['task']} prog={d['progress']}% "
                           f"wp={d['waypoint']} fault=0x{d['fault']:02X}")
+                elif k == "internals":
+                    # ★ 调平衡的核心观测帧：三个环各自的贡献 + "算出来"vs"真执行"
+                    flags = []
+                    if d["statusBits"] & 0x01: flags.append("Flag_Stop")
+                    if d["statusBits"] & 0x02: flags.append("App锁存")
+                    if d["statusBits"] & 0x04: flags.append("本拍调了Set_pwm")
+                    # 关键判据：算了但没执行（被 Turn_Off/Flag_Stop 挡）时 CCR 会明显小于 |Moto|
+                    blocked = abs(d["moto1"]) > 50 and d["ccrA"] == 0
+                    print(f"  CTRL Bal={d['balancePwm']:6d} Vel={d['velocityPwm']:6d} "
+                          f"Turn={d['turnPwm']:6d} | Moto={d['moto1']:6d}/{d['moto2']:6d} "
+                          f"→ CCR={d['ccrA']:5d}/{d['ccrB']:5d}  Enc={d['encLeft']:5d}/{d['encRight']:5d}"
+                          f"  {'/'.join(flags) if flags else ''}"
+                          f"{'   ← 算了没执行!' if blocked else ''}")
                 elif k == "diag":
                     # ★ 诊断帧：按秒差分算出"OLED 写速率"与"各任务 tick 速率"。
                     #   这两个数能客观区分三种情况（联调时最关键）：

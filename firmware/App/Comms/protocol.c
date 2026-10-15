@@ -385,6 +385,44 @@ int Proto_Unpack_Event(const uint8_t *in, uint16_t len, uint8_t *code, uint32_t 
 
 /* ------------------------------------------------------------------ 0x14 环境与气体 */
 
+/* ------------------------------------------------------------------ 0x16 三环实况（v1.2 新增） */
+
+uint16_t Proto_Pack_Internals(const ProtoInternals *s, uint8_t *out)
+{
+	Proto_PutI16(&out[0], s->balancePwm);
+	Proto_PutI16(&out[2], s->velocityPwm);
+	Proto_PutI16(&out[4], s->turnPwm);
+	Proto_PutI16(&out[6], s->moto1);
+	Proto_PutI16(&out[8], s->moto2);
+	Proto_PutU16(&out[10], s->ccrA);
+	Proto_PutU16(&out[12], s->ccrB);
+	Proto_PutI16(&out[14], s->encLeft);
+	Proto_PutI16(&out[16], s->encRight);
+	out[18] = s->statusBits;
+	out[19] = s->reserved;
+	return 20;
+}
+
+int Proto_Unpack_Internals(const uint8_t *in, uint16_t len, ProtoInternals *s)
+{
+	if (len != 20)
+	{
+		return -1;
+	}
+	s->balancePwm  = Proto_GetI16(&in[0]);
+	s->velocityPwm = Proto_GetI16(&in[2]);
+	s->turnPwm     = Proto_GetI16(&in[4]);
+	s->moto1       = Proto_GetI16(&in[6]);
+	s->moto2       = Proto_GetI16(&in[8]);
+	s->ccrA        = Proto_GetU16(&in[10]);
+	s->ccrB        = Proto_GetU16(&in[12]);
+	s->encLeft     = Proto_GetI16(&in[14]);
+	s->encRight    = Proto_GetI16(&in[16]);
+	s->statusBits  = in[18];
+	s->reserved    = in[19];
+	return 0;
+}
+
 /* ------------------------------------------------------------------ 0x15 诊断（v1.2 新增） */
 
 uint16_t Proto_Pack_Diag(const ProtoDiag *s, uint8_t *out)

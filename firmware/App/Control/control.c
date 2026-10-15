@@ -21,6 +21,8 @@ int Voltage_Temp,Voltage_Count,Voltage_All;
    为什么放在中断里做：中断每 5/10 ms 都会跑，是唯一能保证"锁存一置位、电机立刻停"的地方；
    而任务侧写一个 volatile u8 是原子的，不需要任何锁。 */
 extern volatile u8 App_MotorDisable;
+/* ★ 2026-10-13：本拍是否真的执行了 Set_Pwm（供 0x16 上报，铁律 29 的断言位）*/
+volatile u8 g_pwmApplied = 0;
 #include "odom.h"           /* 里程累计（纯加法，中断安全）*/
 #endif
 /**************************************************************************
@@ -81,7 +83,8 @@ int EXTI15_10_IRQHandler(void)
 #endif
 			Get_Angle(Way_Angle);                                               //===更新姿态
 			Read_Distane();                                                			//===获取超声波测量距离值
-				Balance_Pwm =balance(Angle_Balance,Gyro_Balance);                   //===平衡PID控制
+				g_pwmApplied = 0;                      /* ★ 每拍先清，只有真调了 Set_Pwm 才置 1 */
+			Balance_Pwm =balance(Angle_Balance,Gyro_Balance);                   //===平衡PID控制
 		Velocity_Pwm=velocity(Encoder_Left,Encoder_Right);                  //===速度环PID控制	 记住，速度反馈是正反馈，就是小车快的时候要慢下来就需要再跑快一点
 			Turn_Pwm    =turn(Encoder_Left,Encoder_Right,Gyro_Turn);          	//===转向环PID控制
 			Moto1=Balance_Pwm+Velocity_Pwm-Turn_Pwm;                            //===计算左轮电机最终PWM
@@ -248,6 +251,7 @@ int turn(int encoder_left,int encoder_right,float gyro)//转向控制
 **************************************************************************/
 void Set_Pwm(int moto1,int moto2)
 {
+	g_pwmApplied = 1;    /* ★ 真正写寄存器的地方：这里置位，0x16 用它判定"算出来有没有被执行" */
 		if(moto1>0)			AIN2=0,			AIN1=1;
 			else 	          AIN2=1,			AIN1=0;
 			PWMA=myabs(moto1)*1.17;

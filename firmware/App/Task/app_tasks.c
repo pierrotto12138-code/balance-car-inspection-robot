@@ -409,6 +409,31 @@ static void comm_task(void *arg)
 					dg.ticks[3] = (uint8_t)(s_ticks[APP_TASK_UI] & 0xFFu);
 					Proto_Pack_Diag(&dg, payload);
 					send_frame_all(PROTO_UP_DIAG, payload, 16);
+
+					/* ★ 同一个 1 Hz 节拍再发一帧**三环实况**（0x16, v1.2 新增）。
+					   调平衡时真正需要看的量：三个环各自的贡献、送 Set_Pwm 前后的值、
+					   **真实 CCR**、编码器原始计数，以及"本拍到底调没调 Set_Pwm"。
+					   —— 有了它，"往哪转"这类黑盒问题变成"一眼看到是谁在出力、输出有没有被挡"。*/
+					{
+						ProtoInternals it;
+						BoardControlInternals ci;
+						Board_ReadControlInternals(&ci);
+						it.balancePwm  = ci.balancePwm;
+						it.velocityPwm = ci.velocityPwm;
+						it.turnPwm     = ci.turnPwm;
+						it.moto1       = ci.moto1;
+						it.moto2       = ci.moto2;
+						it.ccrA        = ci.ccrA;
+						it.ccrB        = ci.ccrB;
+						it.encLeft     = ci.encLeft;
+						it.encRight    = ci.encRight;
+						it.statusBits  = (uint8_t)((ci.flagStop ? 0x01u : 0u) |
+												   (ci.motorDisable ? 0x02u : 0u) |
+												   (ci.pwmApplied ? 0x04u : 0u));
+						it.reserved    = 0;
+						Proto_Pack_Internals(&it, payload);
+						send_frame_all(PROTO_UP_INTERNALS, payload, 20);
+					}
 				}
 			}
 		}

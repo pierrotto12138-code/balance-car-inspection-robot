@@ -1,6 +1,12 @@
 #include "board_state.h"
 
-#include "sys.h"            /* 厂商全局量的**统一声明处**（见 System/sys/sys.h）*/
+#include "sys.h"
+#include "motor.h"      /* PWMA/PWMB：TIM1 的 CCR 宏（真实输出）*/
+#include "control.h"    /* Balance_Pwm / Velocity_Pwm / Turn_Pwm 的 extern 声明 */
+/* 这两个量没有集中声明处（App_MotorDisable 定义在 app_tasks.c、g_pwmApplied 定义在
+   control.c），这里显式 extern，类型与定义处一致（volatile u8）。*/
+extern volatile u8 App_MotorDisable;
+extern volatile u8 g_pwmApplied;            /* 厂商全局量的**统一声明处**（见 System/sys/sys.h）*/
 #ifdef USE_FREERTOS
 #include "FreeRTOS.h"
 #include "task.h"
@@ -78,6 +84,32 @@ void Board_CapturePidParams(float *balanceKp, float *balanceKd,
 	if (zhongzhi != 0)   { *zhongzhi   = Zhongzhi;    }
 	if (turnKp != 0)     { *turnKp     = Turn_Kp;     }
 	if (turnKd != 0)     { *turnKd     = Turn_Kd;     }
+}
+
+void Board_ReadControlInternals(BoardControlInternals *out)
+{
+	if (out == 0)
+	{
+		return;
+	}
+#ifdef USE_FREERTOS
+	taskENTER_CRITICAL();
+#endif
+	out->balancePwm   = (int16_t)Balance_Pwm;
+	out->velocityPwm  = (int16_t)Velocity_Pwm;
+	out->turnPwm      = (int16_t)Turn_Pwm;
+	out->moto1        = (int16_t)Moto1;
+	out->moto2        = (int16_t)Moto2;
+	out->ccrA         = (uint16_t)PWMA;      /* 真实写进寄存器的值 */
+	out->ccrB         = (uint16_t)PWMB;
+	out->encLeft      = (int16_t)Encoder_Left;
+	out->encRight     = (int16_t)Encoder_Right;
+	out->flagStop     = (uint8_t)Flag_Stop;
+	out->motorDisable = (uint8_t)App_MotorDisable;
+	out->pwmApplied   = (uint8_t)g_pwmApplied;
+#ifdef USE_FREERTOS
+	taskEXIT_CRITICAL();
+#endif
 }
 
 void Board_LedSet(uint8_t on)

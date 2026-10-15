@@ -33,6 +33,7 @@
  *   · 当前在哪一页（`Flag_Page`）、`Flag_Show`/`Way_Angle` 是什么
  *   · 电池电压（原本任何上行帧都没有它）、剩余堆
  * 它**不改动任何已有帧的长度与语义**，旧工具不认识 0x15 直接忽略即可（向后兼容）。*/
+#define PROTO_UP_INTERNALS   0x16u   /* 三环实况（N=20，50 ms；调参专用，见 §3.5）*/
 #define PROTO_UP_DIAG        0x15u   /* 诊断（N=16，1 Hz，见 §3.4） */
 #define PROTO_UP_HEARTBEAT   0x1Fu   /* 心跳       N=0  */
 
@@ -216,6 +217,26 @@ typedef struct
 	uint32_t oledWrites;    /* OLED 累计写入字节数（不涨 = 屏幕根本没在刷）*/
 	uint8_t  ticks[4];      /* 四个任务 tick 的低 8 位（在涨 = 该任务存活）*/
 } ProtoDiag;
+/* 0x16 三环实况（v1.2 新增）：把"调平衡时真正需要看的量"一次给全。
+   解决的问题：原先只能看到"轮子往哪转"这一个末端现象，而三个环各自的贡献、
+   以及"算出来的值有没有真的写进寄存器"全都不可见 —— 于是速度环（权重是平衡环
+   的 13 倍）一旦符号错，就把平衡环的表现完全掩盖，只能靠"翻一个试试"，必然绕圈。*/
+typedef struct
+{
+	int16_t  balancePwm;    /* balance() 输出 */
+	int16_t  velocityPwm;   /* velocity() 输出 */
+	int16_t  turnPwm;       /* turn() 输出 */
+	int16_t  moto1;         /* 送 Set_Pwm 前（含限幅）*/
+	int16_t  moto2;
+	uint16_t ccrA;          /* 真实寄存器值（TIM1->CCR4）*/
+	uint16_t ccrB;          /* TIM1->CCR1 */
+	int16_t  encLeft;       /* 编码器原始计数（不依赖轮径标定）*/
+	int16_t  encRight;
+	uint8_t  statusBits;    /* bit0 Flag_Stop / bit1 App_MotorDisable / bit2 本拍调了 Set_Pwm */
+	uint8_t  reserved;
+} ProtoInternals;
+uint16_t Proto_Pack_Internals(const ProtoInternals *s, uint8_t *out);
+int      Proto_Unpack_Internals(const uint8_t *in, uint16_t len, ProtoInternals *s);
 uint16_t Proto_Pack_Diag(const ProtoDiag *s, uint8_t *out);
 int      Proto_Unpack_Diag(const uint8_t *in, uint16_t len, ProtoDiag *s);
 

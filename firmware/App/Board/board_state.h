@@ -55,6 +55,25 @@ void    Board_WriteVendorStop(uint8_t on);
  * 把"板级细节"漏进任务层（P2 结构整改的最后一块）；
  * 而且 LED 是**低电平点亮**，容易接反 —— 这里用 `on` 的语义包一层，读代码的人不必记极性。
  * `Led_Flash()` 的闪烁节奏仍由厂商 `control.c` 的中断负责，这里只处理"常亮/常灭"这种状态。*/
+/* ★ 2026-10-13 新增：控制环内部实况（供 0x16 上报）。
+   为什么单独一个出口：厂商的三环分量是全局量，App 层不该直接摸（P2 结构整改的约定），
+   且这几个量必须**同一拍**读走才有意义 —— 所以在实现里用一次临界区取快照。*/
+typedef struct
+{
+	int16_t  balancePwm;    /* balance() 输出（P+D）*/
+	int16_t  velocityPwm;   /* velocity() 输出（PI）*/
+	int16_t  turnPwm;       /* turn() 输出（PD）*/
+	int16_t  moto1;         /* 送 Set_Pwm 前的左轮值（含限幅）*/
+	int16_t  moto2;         /* 送 Set_Pwm 前的右轮值 */
+	uint16_t ccrA;          /* TIM1->CCR4：**真正写进寄存器**的左轮占空 */
+	uint16_t ccrB;          /* TIM1->CCR1：右轮 */
+	int16_t  encLeft;       /* 编码器原始计数（每 10 ms 增量）*/
+	int16_t  encRight;
+	uint8_t  flagStop;      /* 厂商 Flag_Stop */
+	uint8_t  motorDisable;  /* App 层安全锁存所导致的强制关电机 */
+	uint8_t  pwmApplied;    /* 本拍是否真的调用了 Set_Pwm（铁律 29 的直接断言位）*/
+} BoardControlInternals;
+void Board_ReadControlInternals(BoardControlInternals *out);
 void Board_LedSet(uint8_t on);
 
 /* ---- PID 参数：参数表 ↔ 厂商全局量 的双向同步 ----
