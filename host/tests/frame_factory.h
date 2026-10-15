@@ -145,4 +145,19 @@ inline void feedAll(domain::VehicleState &st, io::LinkKind kind = io::LinkKind::
     st.onFrame(kind, proto::up::kHeartbeat, QByteArray());
 }
 
+// ---- 按"物理量"造帧：写测试时不必自己算 ppm×10 / 0.01 V（算错会得到假结论）----
+
+/// 0x14：直接给两路浓度（ppm），内部 ×10 成协议单位
+inline QByteArray envPpm(double mq2ppm, double mq135ppm, quint8 ready = 0x0F)
+{
+    return env(1234, 2345, static_cast<quint16>(mq2ppm * 10.0 + 0.5),
+               static_cast<quint16>(mq135ppm * 10.0 + 0.5), 256, 610, ready, 0x01);
+}
+
+/// 0x15：直接给电压（V），内部 ×100 成协议单位
+inline QByteArray diagVolt(double volts, quint8 stateBits = 0x04)
+{
+    return diag(static_cast<quint16>(volts * 100.0 + 0.5), stateBits);
+}
+
 } // namespace testframes

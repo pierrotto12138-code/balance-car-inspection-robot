@@ -755,6 +755,15 @@ void App_Start(void)
 
 	/* ★ P2 分层整改：把"让出 CPU 的延时"注入 System 层，紧接着启动调度器。
 		钩子注册 ⟺ 调度器已启动；注册之前的 delay_ms() 仍走忙等，行为与原来一致。 */
+#if CFG_DEBUG_PARAM_OVERRIDE
+	/* ★ 2026-10-15：调试期"出厂增益"覆盖（见 app_config.h）。
+	     放在 ParamStore_Load() 之后 ⇒ 无论 Flash 里存的是什么，都会按这里强制生效；
+	     这样才能摆脱"远程写参数会被复位抹掉"的反复。*/
+	(void)ParamStore_SetOne(PARAM_VELOCITY_KP, CFG_OVR_VELOCITY_KP);
+	(void)ParamStore_SetOne(PARAM_VELOCITY_KI, CFG_OVR_VELOCITY_KI);
+	(void)ParamStore_SetOne(PARAM_TURN_KP,     CFG_OVR_TURN_KP);
+	(void)ParamStore_SetOne(PARAM_TURN_KD,     CFG_OVR_TURN_KD);
+#endif
 #if CFG_DEBUG_DISABLE_VELOCITY
 	/* ★ 调试期：上电即摘掉速度环（见 app_config.h 的说明），只留平衡环，便于单独验方向。
 	   注意：只改内存中的生效值，**不写 Flash**（ParamStore_Save 未被调用）。*/

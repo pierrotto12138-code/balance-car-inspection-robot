@@ -84,10 +84,9 @@ signals:
     void viewModified(bool modified);
 
 protected:
-    void mouseMoveEvent(QMouseEvent *event) override;
-    void leaveEvent(QEvent *event) override;
-    void mouseDoubleClickEvent(QMouseEvent *event) override;
-    void wheelEvent(QWheelEvent *event) override;
+    /// 只用于"鼠标离开图区收起十字定标"（子控件 QCustomPlot 吃掉了 Enter/Leave，
+    /// 所以必须用事件过滤器，而不是重写 QWidget::leaveEvent）
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     struct Channel {
@@ -123,8 +122,12 @@ private:
     bool m_autoY = false;
     bool m_endLabels = true;
     bool m_viewModified = false;
+    /// 正在程序化设置量程（此时 xAxis::rangeChanged 不算"用户缩放"）
+    bool m_settingRange = false;
     double m_lastT = -1.0;
     QString m_readout;
     /// 数据点上限（防"窗口设得极大 + 高频帧"把内存吃满）
     static constexpr int kMaxPoints = 20000;
+    /// 事件标记上限（防长时间运行后标记铺满整张图）
+    static constexpr int kMaxMarkers = 40;
 };

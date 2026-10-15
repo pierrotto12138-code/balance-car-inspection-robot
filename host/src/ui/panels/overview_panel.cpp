@@ -1,5 +1,6 @@
 #include "ui/panels/overview_panel.h"
 
+#include "domain/alarm.h"
 #include "domain/units.h"
 #include "io/link_manager.h"
 #include "ui/theme/theme.h"
@@ -41,8 +42,9 @@ QString linkCn(io::LinkKind kind)
 
 } // namespace
 
-OverviewPanel::OverviewPanel(domain::VehicleState *state, io::LinkManager *mgr, QWidget *parent)
-    : QWidget(parent), m_state(state), m_mgr(mgr)
+OverviewPanel::OverviewPanel(domain::VehicleState *state, io::LinkManager *mgr,
+                             domain::AlarmEngine *alarm, QWidget *parent)
+    : QWidget(parent), m_state(state), m_mgr(mgr), m_alarm(alarm)
 {
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(10, 8, 10, 8);
@@ -82,6 +84,16 @@ OverviewPanel::OverviewPanel(domain::VehicleState *state, io::LinkManager *mgr, 
 QString OverviewPanel::bannerText() const
 {
     return m_banner->text();
+}
+
+void OverviewPanel::setUpdatesPaused(bool on)
+{
+    if (on) {
+        m_timer->stop();
+    } else {
+        m_timer->start();
+        refresh();
+    }
 }
 
 QGroupBox *OverviewPanel::buildAttitudeGroup()
@@ -336,7 +348,17 @@ void OverviewPanel::refresh()
     const auto &st = *m_state;
 
     // ---- ① 安全横幅（最显眼的一行；正常时中性色）----
-    setBanner(st.safetySeverity(), st.safetySummary());
+    // 优先级：安全锁存（车不会动）> 活动告警 > 低压 > 无数据/链路超时 > 正常。
+    // 注意：报警的判定**只认 AlarmEngine**（阈值+迟滞+连续确认），
+    // 这里不再自己按数值比一遍 —— 两套判据一定会打架。
+    if (st.safetyLatched()) {
+        setBanner(domain::Severity::Alarm, st.safetySummary());
+    } else if (m_alarm != nullptr && m_alarm->anyActive()) {
+        setBanner(m_alarm->severity(),
+                  QStringLiteral("⚠ 报警中：%1").arg(m_alarm->activeSummary()));
+    } else {
+        setBanner(st.safetySeverity(), st.safetySummary());
+    }
 
     // ---- ② 姿态 ----
     const bool poseOk = fresh(proto::up::kPose, domain::VehicleState::kPoseStaleMs);
@@ -535,8 +557,9 @@ void OverviewPanel::refresh()
     m_primary->setText(primary == io::LinkKind::Count
                            ? QStringLiteral("主链路：无（两条都未连接）")
                            : QStringLiteral("主链路：%1（有线优先，协议 §七 约定 6）").arg(linkCn(primary)));
-    m_counters->setText(QStringLiteral("本机统计：格式错帧 %1 · 协议外命令 %2 · 已收到命令 "
-                                       "0x10/0x11/0x12/0x14/0x15/0x16 = %3/%4/%5/%6/%7/%8")
+    m_counters->setText(QStringLiteral("本机统计：活动告警 %1 项 · 格式错帧 %2 · 协议外命令 %3 · "
+                                       "已收到命令 0x10/0x11/0x12/0x14/0x15/0x16 = %4/%5/%6/%7/%8/%9")
+                            .arg(m_alarm != nullptr ? m_alarm->activeCount() : 0)
                             .arg(st.malformedFrames())
                             .arg(st.unknownFrames())
                             .arg(st.received(proto::up::kPose) ? QStringLiteral("有") : QStringLiteral("无"),
@@ -564,10 +587,14 @@ void OverviewPanel::refresh()
     const bool envSeen = st.received(proto::up::kEnvGas);
     const bool loopOk = st.received(proto::up::kLoop);
 
-    m_ledAlarm->setLevel((diagOk && d.alarmActive()) || (taskOk && t.anyFault())
+    m_ledAlarm->setLevel((diagOk && d.alarmActive()) || (taskOk && t.anyFault()) ||
+                                 (m_alarm != nullptr && m_alarm->anyActive())
                              ? LedIndicator::Level::Alarm
                              : LedIndicator::Level::Off,
-                         (taskOk && t.anyFault()) ? domain::faultFlagsText(t.faultFlags) : QString());
+                         (m_alarm != nullptr && m_alarm->anyActive())
+                             ? QStringLiteral("%1 项").arg(m_alarm->activeCount())
+                             : ((taskOk && t.anyFault()) ? domain::faultFlagsText(t.faultFlags)
+                                                         : QString()));
     m_ledLatch->setLevel(st.safetyLatched() ? LedIndicator::Level::Alarm : LedIndicator::Level::Off,
                          st.safetyLatched() ? QStringLiteral("需重下任务解除") : QString());
     m_ledDht->setLevel((diagOk && d.dht11Valid()) || (envSeen && e.dht11Valid())

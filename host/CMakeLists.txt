@@ -44,6 +44,8 @@ add_library(domain STATIC
     src/domain/frames.h
     src/domain/vehicle_state.cpp
     src/domain/vehicle_state.h
+    src/domain/alarm.cpp
+    src/domain/alarm.h
 )
 target_include_directories(domain PUBLIC src)
 target_link_libraries(domain PUBLIC protocol Qt6::Core)
@@ -123,6 +125,11 @@ if(Qt6Test_FOUND)
     target_link_libraries(test_ui PRIVATE hostui Qt6::Test)
     add_test(NAME ui COMMAND test_ui)
     set_tests_properties(ui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # P2：告警判定与事件流测试（纯逻辑，不需要硬件与界面）
+    add_executable(test_alarm tests/test_alarm.cpp)
+    target_link_libraries(test_alarm PRIVATE domain hostdata hostio Qt6::Test)
+    add_test(NAME alarm COMMAND test_alarm)
 else()
     message(STATUS "Qt6::Test 未找到，跳过单元测试目标")
 endif()

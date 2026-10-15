@@ -73,7 +73,22 @@
 /* ---- 转向环极性（2026-10-15）：速度环用编码器"和"、转向环用"差"，
    翻编码器对修速度环时会连带把转向环翻反 ⇒ 偏航正反馈 ⇒ 原地转圈。
    本开关单独把转向环翻回来（等效：把 Turn_Kp/Turn_Kd 设为负值，可在线试）。*/
-#define CFG_TURN_INVERT        1
+#define CFG_TURN_INVERT        0
+
+
+/* ---- 调试期"出厂增益"覆盖（2026-10-15）----
+ * 为什么要有它：远程写 0x24 **不可靠**（今晚多次"无回显"/被拒），而每次复位/重新连接
+ * PC 都会从 Flash 重新载入参数 ⇒ 远程改动会被抹掉、转圈等毛病反复出现。
+ * 这里做成**编译期出厂值**：上电时（ParamStore_Load 之后）强制覆盖，烧一次即长期有效。
+ * 调试完成、参数定型后把 CFG_DEBUG_PARAM_OVERRIDE 置 0 即可。
+ *
+ * 当前取值（用户明确要求"先不要转圈"）：转向环 0（无权限 ⇒ 不可能转圈）、
+ * 速度环 0（无位置调节 ⇒ 不会跑飞，但也无法抑制漂移）。*/
+#define CFG_DEBUG_PARAM_OVERRIDE 1
+#define CFG_OVR_VELOCITY_KP      0.0f
+#define CFG_OVR_VELOCITY_KI      0.0f
+#define CFG_OVR_TURN_KP          0.0f
+#define CFG_OVR_TURN_KD          0.0f
 
 #define CFG_FW_BUILD_ID        0xAF    /* 2026-10-15 */
 

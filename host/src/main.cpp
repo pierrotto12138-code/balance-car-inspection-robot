@@ -8,6 +8,8 @@
 #include <QTimer>
 
 #include "codec.h" // 事件码常量（自检里识别 0x13）
+#include "data/event_log.h"
+#include "domain/alarm.h"
 #include "domain/units.h"
 #include "domain/vehicle_state.h"
 #include "io/link_manager.h"
@@ -16,18 +18,144 @@
 
 // ============================================================================
 //  程序入口：只做"装配"这一件事
-//     LinkManager（io 层）→ VehicleState（domain 层）→ MainWindow（ui 层）
+//    LinkManager（io）→ VehicleState / AlarmEngine（domain）→ EventLog（data）→ MainWindow（ui）
 //  依赖单向：io 不知道 domain，domain 不知道界面，界面不解析字节。
 //
 //  无界面自检（便于无人值守/CI 验证整机可跑，也便于把证据贴进文档）：
-//      host.exe --selftest [秒数] -platform offscreen
-//    两条链路都切假源 → 打开 → 跑 N 秒 → 打印链路统计 **与 domain 聚合出的状态**
-//    → 退出码 0 = 收到帧、无丢帧、无格式错帧、且姿态/环境/诊断三类数据都解析成功。
+//      host.exe --selftest [秒数] [--rate N] -platform offscreen
+//    两条链路都切假源 → 打开 → 跑 N 秒 → 打印链路统计、**状态聚合**、**告警与事件流**
+//    → 退出码 0 = 收到帧、无丢帧、无格式错帧、必到帧全解析、且没有意外告警。
 //
 //  演示模式（板子不在手边 / 现场硬件故障时的应急预案）：
-//      host.exe --demo
+//      host.exe --demo [--rate 5]     # ×5 时约 12 s 就能看到"气体冲高→急停锁存→解除→低压"
 // ============================================================================
 namespace {
+
+// 前向声明：describeState 定义在下面（自检与探测都要用它打印状态）
+QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr);
+
+/// 把告警与事件流打成一段可读文本（自检输出，也是"P2 是否真的在工作"的证据）
+QString describeAlarms(const domain::VehicleState &st, const domain::AlarmEngine &alarm,
+                       const data::EventLog &log)
+{
+    QString s;
+    auto add = [&s](const QString &line) { s += line + QLatin1Char('\n'); };
+
+    add(QStringLiteral("  活动告警：%1 项%2")
+            .arg(alarm.activeCount())
+            .arg(alarm.anyActive() ? (QStringLiteral(" —— ") + alarm.activeSummary()) : QString()));
+    if (alarm.activeCount() == 0 && !alarm.history().isEmpty()) {
+        QStringList cleared;
+        for (const domain::AlarmRecord &r : alarm.history()) {
+            cleared << QStringLiteral("%1（%2 次跃变，峰值 %3 %4）")
+                           .arg(r.title)
+                           .arg(r.active ? QStringLiteral("仍活动") : QStringLiteral("已解除"))
+                           .arg(domain::units::number(r.peak, r.unit == QStringLiteral("V") ? 2 : 1),
+                                r.unit);
+        }
+        add(QStringLiteral("  告警记录：%1").arg(cleared.join(QStringLiteral("；"))));
+    }
+    add(QStringLiteral("  安全状态：%1").arg(st.safetySummary()));
+
+    add(QStringLiteral("  事件流：%1 条").arg(log.size()));
+    const int show = qMin(log.size(), 8);
+    for (int i = 0; i < show; ++i) {
+        const data::EventEntry &e = log.at(i);
+        add(QStringLiteral("    T+%1 s  %2  %3%4")
+                .arg(e.localMs / 1000.0, 0, 'f', 1)
+                .arg(e.local ? QStringLiteral("本机") : QStringLiteral("机器人"))
+                .arg(e.title)
+                .arg(e.detail.isEmpty() ? QString() : (QStringLiteral(" —— ") + e.detail)));
+    }
+    if (log.size() > show) {
+        add(QStringLiteral("    …（共 %1 条，界面上可看全部）").arg(log.size()));
+    }
+    const qint64 shortest = log.shortestSafetyStopMs();
+    add(QStringLiteral("  最短安全停车时长：%1")
+            .arg(shortest < 0 ? QStringLiteral("（本次未出现\"停车→解除\"配对）")
+                              : QStringLiteral("%1 s").arg(shortest / 1000.0, 0, 'f', 1)));
+    return s;
+}
+
+int runSelfTest(double seconds, double rate)
+{
+    io::LinkManager mgr;
+    mgr.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
+    mgr.setMode(io::LinkKind::Bluetooth, io::LinkManager::Mode::Replay);
+    mgr.setReplayRate(rate);
+
+    // 与真实运行**同一条路径**：链路 → VehicleState/AlarmEngine（domain）→ EventLog（data）
+    domain::VehicleState state;
+    domain::AlarmEngine alarm;
+    data::EventLog log;
+    QObject::connect(&mgr, &io::LinkManager::frameReady, &state, &domain::VehicleState::onFrame);
+    QObject::connect(&mgr, &io::LinkManager::frameReady, &log, &data::EventLog::onFrame);
+    QObject::connect(&state, &domain::VehicleState::dataUpdated, &alarm,
+                     [&state, &alarm](quint8 cmd) { alarm.onFrameDecoded(state, cmd); });
+    QObject::connect(&alarm, &domain::AlarmEngine::alarmRaised, &log, &data::EventLog::onAlarmRaised);
+    QObject::connect(&alarm, &domain::AlarmEngine::alarmCleared, &log, &data::EventLog::onAlarmCleared);
+
+    // 告警里"随时间变化"的规则（失联、锁存）用固定节拍评估，而不是每帧评估
+    QTimer alarmTick;
+    alarmTick.setInterval(100);
+    QObject::connect(&alarmTick, &QTimer::timeout, &alarm, [&state, &alarm]() { alarm.tick(state); });
+    alarmTick.start();
+
+    QTextStream out(stdout);
+    out << QStringLiteral("自检中：假源 ×%1，跑 %2 s（协议周期 0x10/0x11 20 Hz…）\n")
+               .arg(rate, 0, 'f', 1)
+               .arg(seconds, 0, 'f', 1);
+    out.flush();
+
+    mgr.openAll();
+
+    QEventLoop loop;
+    QTimer::singleShot(static_cast<int>(seconds * 1000.0), &loop, &QEventLoop::quit);
+    loop.exec();
+
+    alarmTick.stop();
+    alarm.tick(state); // 收尾再判一次（把"最后一帧之后"的状态也反映出来）
+    mgr.closeAll();
+
+    bool ok = true;
+    for (int i = 0; i < static_cast<int>(io::LinkKind::Count); ++i) {
+        const auto kind = static_cast<io::LinkKind>(i);
+        const io::LinkStats s = mgr.stats(kind);
+        out << QStringLiteral("  %1：收 %2 B / 发 %3 B · 解帧 %4 · 丢帧 %5 · 重连 %6\n")
+                   .arg(QString::fromUtf8(io::linkName(kind)))
+                   .arg(s.bytesRx)
+                   .arg(s.bytesTx)
+                   .arg(s.framesOk)
+                   .arg(s.framesDropped)
+                   .arg(s.reconnects);
+        if (s.framesOk == 0 || s.framesDropped != 0) {
+            ok = false;
+        }
+    }
+
+    out << QStringLiteral("\n【domain 状态聚合】假源 → 解帧 → 领域层（界面上看到的就是这些值）\n");
+    out << describeState(state, mgr);
+    out << QStringLiteral("\n【告警判定与事件流】domain/alarm + data/event_log\n");
+    out << describeAlarms(state, alarm, log);
+    out.flush();
+
+    // 界面能不能看到数据，取决于这几条：必到的帧必须都解析成功，且没有格式错帧
+    const bool dataOk = state.received(proto::up::kPose) && state.received(proto::up::kMotion) &&
+                        state.received(proto::up::kTask) && state.received(proto::up::kEnvGas) &&
+                        state.received(proto::up::kDiag) && state.received(proto::up::kLoop);
+    if (!dataOk) {
+        out << QStringLiteral("\n✘ 有命令字始终没有解析成功 —— 检查假源与 domain 的长度口径\n");
+        ok = false;
+    }
+    if (state.malformedFrames() != 0) {
+        out << QStringLiteral("\n✘ 出现格式错帧 %1 条 —— 说明长度口径与协议不一致\n")
+                   .arg(state.malformedFrames());
+        ok = false;
+    }
+    out << (ok ? QStringLiteral("自检通过 ✅\n") : QStringLiteral("自检失败 ❌\n"));
+    out.flush();
+    return ok ? 0 : 1;
+}
 
 /// 把 domain 层聚合出的状态打成一段可读文本（自检输出，也是"数据到没到界面"的证据）
 QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr)
@@ -155,68 +283,6 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
         add(QStringLiteral("  最近安全事件：%1").arg(st.lastSafetyEventText()));
     }
     return s;
-}
-
-int runSelfTest(double seconds)
-{
-    io::LinkManager mgr;
-    mgr.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
-    mgr.setMode(io::LinkKind::Bluetooth, io::LinkManager::Mode::Replay);
-    mgr.setReplayRate(1.0);
-
-    // 与真实运行**同一条路径**：链路 → VehicleState（domain）→ 界面读它
-    domain::VehicleState state;
-    QObject::connect(&mgr, &io::LinkManager::frameReady, &state, &domain::VehicleState::onFrame);
-
-    QTextStream out(stdout);
-    out << QStringLiteral("自检中：假源 ×1.0，跑 %1 s（协议周期 0x10/0x11 20 Hz…）\n")
-               .arg(seconds, 0, 'f', 1);
-    out.flush();
-
-    mgr.openAll();
-
-    QEventLoop loop;
-    QTimer::singleShot(static_cast<int>(seconds * 1000.0), &loop, &QEventLoop::quit);
-    loop.exec();
-
-    mgr.closeAll();
-
-    bool ok = true;
-    for (int i = 0; i < static_cast<int>(io::LinkKind::Count); ++i) {
-        const auto kind = static_cast<io::LinkKind>(i);
-        const io::LinkStats s = mgr.stats(kind);
-        out << QStringLiteral("  %1：收 %2 B / 发 %3 B · 解帧 %4 · 丢帧 %5 · 重连 %6\n")
-                   .arg(QString::fromUtf8(io::linkName(kind)))
-                   .arg(s.bytesRx)
-                   .arg(s.bytesTx)
-                   .arg(s.framesOk)
-                   .arg(s.framesDropped)
-                   .arg(s.reconnects);
-        if (s.framesOk == 0 || s.framesDropped != 0) {
-            ok = false;
-        }
-    }
-
-    out << QStringLiteral("\n【domain 状态聚合】假源 → 解帧 → 领域层（界面上看到的就是这些值）\n");
-    out << describeState(state, mgr);
-    out.flush();
-
-    // 界面能不能看到数据，取决于这几条：必到的帧必须都解析成功，且没有格式错帧
-    const bool dataOk = state.received(proto::up::kPose) && state.received(proto::up::kMotion) &&
-                        state.received(proto::up::kTask) && state.received(proto::up::kEnvGas) &&
-                        state.received(proto::up::kDiag) && state.received(proto::up::kLoop);
-    if (!dataOk) {
-        out << QStringLiteral("\n✘ 有命令字始终没有解析成功 —— 检查假源与 domain 的长度口径\n");
-        ok = false;
-    }
-    if (state.malformedFrames() != 0) {
-        out << QStringLiteral("\n✘ 出现格式错帧 %1 条 —— 说明长度口径与协议不一致\n")
-                   .arg(state.malformedFrames());
-        ok = false;
-    }
-    out << (ok ? QStringLiteral("自检通过 ✅\n") : QStringLiteral("自检失败 ❌\n"));
-    out.flush();
-    return ok ? 0 : 1;
 }
 
 /// 真机只读探测：打开真实串口，把收到的帧/解出的状态打印出来。
@@ -365,9 +431,15 @@ int main(int argc, char *argv[])
                                  QStringLiteral("毫秒"), QStringLiteral("2500"));
     parser.addOption(shotDelay);
     QCommandLineOption shotTab(QStringLiteral("shot-tab"),
-                               QStringLiteral("截图对应的导航页：0=总览 1=通信链路 2=协议自检"),
+                               QStringLiteral("截图对应的导航页：0=总览 1=曲线与告警 2=事件流 "
+                                              "3=通信链路 4=协议自检"),
                                QStringLiteral("页号"), QStringLiteral("0"));
     parser.addOption(shotTab);
+    // 假源速率倍数：×5 时约 12 s 就能看到完整的安全剧本（气体冲高→急停锁存→解除→低压）
+    QCommandLineOption rate(QStringLiteral("rate"),
+                            QStringLiteral("假源速率倍数（1.0 = 按协议真实周期；5 = 五倍速演示）"),
+                            QStringLiteral("倍数"), QStringLiteral("1.0"));
+    parser.addOption(rate);
     // 真机只读探测（不需要界面，用来在联调第一现场把"链路/命令覆盖/状态"一次打全）
     QCommandLineOption probe(QStringLiteral("probe"),
                              QStringLiteral("真机只读探测：打开指定串口，打印链路统计、各命令字"
@@ -386,24 +458,42 @@ int main(int argc, char *argv[])
     parser.process(app);
 
     if (parser.isSet(selftest)) {
-        return runSelfTest(parser.value(selftest).toDouble());
+        return runSelfTest(parser.value(selftest).toDouble(), parser.value(rate).toDouble());
     }
     if (parser.isSet(probe)) {
         return runProbe(parser.value(probe), parser.value(probeBaud).toInt(),
                         parser.value(probeSeconds).toDouble(), parser.isSet(probeHb));
     }
 
+    // ---------------- 装配（依赖由外向内注入）----------------
     io::LinkManager manager;
     domain::VehicleState state;
-    // io → domain：跨线程用队列连接传值类型（解析在工作线程完成，见 io/serial_link.h）
+    domain::AlarmEngine alarm;
+    data::EventLog log;
+
+    // ① io → domain/data：跨线程用队列连接传值类型（解析在工作线程完成，见 io/serial_link.h）
     QObject::connect(&manager, &io::LinkManager::frameReady, &state, &domain::VehicleState::onFrame);
+    QObject::connect(&manager, &io::LinkManager::frameReady, &log, &data::EventLog::onFrame);
+    // ② domain 内部：每解出一帧就让告警引擎按该帧的语义判一次（阈值类规则）
+    QObject::connect(&state, &domain::VehicleState::dataUpdated, &alarm,
+                     [&state, &alarm](quint8 cmd) { alarm.onFrameDecoded(state, cmd); });
+    // ③ domain → data：告警的发生/解除进事件流（与 0x13 事件同一根时间轴）
+    QObject::connect(&alarm, &domain::AlarmEngine::alarmRaised, &log, &data::EventLog::onAlarmRaised);
+    QObject::connect(&alarm, &domain::AlarmEngine::alarmCleared, &log,
+                     &data::EventLog::onAlarmCleared);
+    // ④ 随时间变化的告警规则（失联、锁存）用 10 Hz 固定节拍评估
+    QTimer alarmTick;
+    alarmTick.setInterval(100);
+    QObject::connect(&alarmTick, &QTimer::timeout, &alarm, [&state, &alarm]() { alarm.tick(state); });
+    alarmTick.start();
 
     if (parser.isSet(demo)) {
         manager.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
         manager.setMode(io::LinkKind::Bluetooth, io::LinkManager::Mode::Replay);
+        manager.setReplayRate(parser.value(rate).toDouble());
     }
 
-    MainWindow w(&manager, &state);
+    MainWindow w(&manager, &state, &alarm, &log);
     w.show();
     if (parser.isSet(demo)) {
         manager.openAll(); // 窗口显示后再开链路，界面上能直接看到状态变化

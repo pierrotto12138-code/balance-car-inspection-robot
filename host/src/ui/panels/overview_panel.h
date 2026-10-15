@@ -33,15 +33,22 @@ namespace io {
 class LinkManager;
 }
 
+namespace domain {
+class AlarmEngine;
+}
+
 class OverviewPanel : public QWidget
 {
     Q_OBJECT
 public:
-    OverviewPanel(domain::VehicleState *state, io::LinkManager *mgr, QWidget *parent = nullptr);
+    OverviewPanel(domain::VehicleState *state, io::LinkManager *mgr, domain::AlarmEngine *alarm,
+                  QWidget *parent = nullptr);
 
 public slots:
     /// 20 Hz 拉取刷新（计划 §五：UI 以 20 Hz 定时刷新，而不是每来一帧就重绘）
     void refresh();
+    /// 暂停/恢复界面更新（冻结画面读数值；数据仍在接收与判定）
+    void setUpdatesPaused(bool on);
 
 public:
     /// 顶部安全横幅当前文本（测试断言用：横幅是"一眼看出异常"的唯一出口）
@@ -64,6 +71,7 @@ private:
 
     domain::VehicleState *m_state = nullptr;
     io::LinkManager *m_mgr = nullptr;
+    domain::AlarmEngine *m_alarm = nullptr;
     QTimer *m_timer = nullptr;
 
     QLabel *m_banner = nullptr;

@@ -1,16 +1,27 @@
 #include "mainwindow.h"
 
+#include "data/event_log.h"
+#include "domain/alarm.h"
 #include "domain/units.h"
 #include "domain/vehicle_state.h"
+#include "ui/panels/curve_panel.h"
+#include "ui/panels/event_panel.h"
 #include "ui/panels/overview_panel.h"
 #include "ui/p0panel.h"
 #include "ui/theme/theme.h"
 
+#include <QAction>
+#include <QApplication>
+#include <QClipboard>
+#include <QDateTime>
+#include <QDir>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenuBar>
+#include <QShortcut>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -22,7 +33,7 @@
 
 namespace {
 
-/// 状态栏里的常驻小标签（等宽，避免数字跳动时整条状态栏左右抖）
+/// 状态条里的常驻小标签（等宽，避免数字跳动时整条状态栏左右抖）
 QLabel *statusLabel()
 {
     auto *l = new QLabel;
@@ -32,11 +43,12 @@ QLabel *statusLabel()
 
 } // namespace
 
-MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, QWidget *parent)
-    : QMainWindow(parent), m_mgr(mgr), m_state(state)
+MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain::AlarmEngine *alarm,
+                       data::EventLog *log, QWidget *parent)
+    : QMainWindow(parent), m_mgr(mgr), m_state(state), m_alarm(alarm), m_log(log)
 {
-    setWindowTitle(QStringLiteral("仓储环境安全巡检机器人 · 上位机（P1 状态可见）"));
-    resize(1500, 900);
+    setWindowTitle(QStringLiteral("仓储环境安全巡检机器人 · 上位机"));
+    resize(1500, 940);
 
     // ---------------- 左侧导航 + 中央堆叠 ----------------
     auto *central = new QWidget(this);
@@ -48,13 +60,19 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, QWidge
     m_nav->setObjectName(QStringLiteral("nav"));
     m_nav->setFixedWidth(150);
     m_nav->addItem(QStringLiteral("① 总览"));
-    m_nav->addItem(QStringLiteral("② 通信链路"));
-    m_nav->addItem(QStringLiteral("③ 协议自检"));
+    m_nav->addItem(QStringLiteral("② 曲线与告警"));
+    m_nav->addItem(QStringLiteral("③ 事件流"));
+    m_nav->addItem(QStringLiteral("④ 通信链路"));
+    m_nav->addItem(QStringLiteral("⑤ 协议自检"));
 
     m_stack = new QStackedWidget(central);
-    m_overview = new OverviewPanel(m_state, m_mgr, m_stack);
+    m_overview = new OverviewPanel(m_state, m_mgr, m_alarm, m_stack);
+    m_curves = new CurvePanel(m_state, m_mgr, m_alarm, m_stack);
+    m_events = new EventPanel(m_log, m_stack);
     m_p0 = new P0Panel(m_mgr, m_stack);
     m_stack->addWidget(m_overview);
+    m_stack->addWidget(m_curves);
+    m_stack->addWidget(m_events);
     m_stack->addWidget(m_p0);
     m_stack->addWidget(buildSelfTestPage());
 
@@ -65,17 +83,14 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, QWidge
     connect(m_nav, &QListWidget::currentRowChanged, m_stack, &QStackedWidget::setCurrentIndex);
     m_nav->setCurrentRow(0);
 
-    // ---------------- 状态栏 ----------------
-    m_stWire = statusLabel();
-    m_stBt = statusLabel();
-    m_stBattery = statusLabel();
-    m_stSafety = statusLabel();
-    m_stFrames = statusLabel();
-    statusBar()->addPermanentWidget(m_stWire);
-    statusBar()->addPermanentWidget(m_stBt);
-    statusBar()->addPermanentWidget(m_stBattery);
-    statusBar()->addPermanentWidget(m_stSafety);
-    statusBar()->addPermanentWidget(m_stFrames);
+    // ---- 界面内部连线：数据到了 → 曲线采样；告警 → 曲线标记 ----
+    // （跨层装配在 main.cpp；这里只连"界面自己的面板"）
+    connect(m_state, &domain::VehicleState::dataUpdated, m_curves, &CurvePanel::onDataUpdated);
+    connect(m_alarm, &domain::AlarmEngine::alarmRaised, m_curves, &CurvePanel::onAlarmRaised);
+    connect(m_alarm, &domain::AlarmEngine::alarmCleared, m_curves, &CurvePanel::onAlarmCleared);
+
+    // ---------------- 状态条 ----------------
+    buildStatusBar();
 
     auto *stTimer = new QTimer(this);
     stTimer->setInterval(200); // 5 Hz：状态栏不需要 20 Hz
@@ -93,6 +108,36 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, QWidge
                                                   QString::fromUtf8(io::stateName(st)), detail),
                                          3000);
             });
+    connect(m_alarm, &domain::AlarmEngine::alarmRaised, this,
+            [this](const domain::AlarmRecord &r) {
+                statusBar()->showMessage(
+                    QStringLiteral("⚠ 告警：%1（%2）").arg(r.title, domain::units::number(
+                                                                     r.value, r.unit == QStringLiteral("V") ? 2 : 1)),
+                    5000);
+            });
+    connect(m_alarm, &domain::AlarmEngine::alarmCleared, this,
+            [this](const domain::AlarmRecord &r) {
+                statusBar()->showMessage(QStringLiteral("✔ 解除：%1").arg(r.title), 4000);
+            });
+}
+
+void MainWindow::buildStatusBar()
+{
+    m_stDemo = statusLabel();
+    m_stWire = statusLabel();
+    m_stBt = statusLabel();
+    m_stBattery = statusLabel();
+    m_stSafety = statusLabel();
+    m_stAlarm = statusLabel();
+    m_stFrames = statusLabel();
+    // 假源水印放在最左边：**演示数据必须一眼可辨**（计划 §11.2 第 10 条）
+    statusBar()->addWidget(m_stDemo);
+    statusBar()->addPermanentWidget(m_stWire);
+    statusBar()->addPermanentWidget(m_stBt);
+    statusBar()->addPermanentWidget(m_stBattery);
+    statusBar()->addPermanentWidget(m_stAlarm);
+    statusBar()->addPermanentWidget(m_stSafety);
+    statusBar()->addPermanentWidget(m_stFrames);
 }
 
 void MainWindow::showPage(int index)
@@ -107,41 +152,91 @@ int MainWindow::currentPage() const
     return m_stack->currentIndex();
 }
 
+QString MainWindow::pageTitle(int index) const
+{
+    if (index < 0 || index >= m_nav->count()) {
+        return QString();
+    }
+    return m_nav->item(index)->text();
+}
+
 void MainWindow::buildMenus()
 {
     auto *viewMenu = menuBar()->addMenu(QStringLiteral("视图(&V)"));
     for (int i = 0; i < m_stack->count(); ++i) {
-        const QString title = m_nav->item(i)->text();
-        viewMenu->addAction(title, this, [this, i]() { m_nav->setCurrentRow(i); });
+        const QString title = pageTitle(i);
+        viewMenu->addAction(title, this, [this, i]() { showPage(i); });
     }
     viewMenu->addSeparator();
+
+    auto *pause = viewMenu->addAction(QStringLiteral("暂停界面更新"));
+    pause->setCheckable(true);
+    pause->setShortcut(QKeySequence(Qt::Key_Space));
+    connect(pause, &QAction::toggled, this, [this](bool on) {
+        m_curves->setPaused(on);
+        m_overview->setUpdatesPaused(on);
+        statusBar()->showMessage(on ? QStringLiteral("界面已暂停更新（数据仍在接收与判定）")
+                                    : QStringLiteral("界面恢复更新"),
+                                 3000);
+    });
+
+    auto *topmost = viewMenu->addAction(QStringLiteral("窗口置顶"));
+    topmost->setCheckable(true);
+    connect(topmost, &QAction::toggled, this, [this](bool on) {
+        const bool visible = isVisible();
+        setWindowFlag(Qt::WindowStaysOnTopHint, on);
+        if (visible) {
+            show(); // 改窗口标志后必须重新 show，否则窗口会消失
+        }
+    });
+
+    viewMenu->addSeparator();
+    auto *shot = viewMenu->addAction(QStringLiteral("快速截图（F11）"));
+    shot->setShortcut(QKeySequence(Qt::Key_F11));
+    connect(shot, &QAction::triggered, this, &MainWindow::quickScreenshot);
     viewMenu->addAction(QStringLiteral("退出"), this, &QWidget::close);
 
     auto *helpMenu = menuBar()->addMenu(QStringLiteral("帮助(&H)"));
     helpMenu->addAction(QStringLiteral("关于本版本"), this, [this]() {
-        statusBar()->showMessage(
-            QStringLiteral("P1 状态可见：domain 层（单位/解析/聚合）+ 总览面板；"
-                           "通信链路面板见左侧 ②；没有板子时用 --demo 跑假源"),
-            8000);
+        statusBar()->showMessage(QStringLiteral("P2：曲线与告警（四张通道独立曲线 + 阈值线 + 告警标记 + "
+                                                "事件流）；协议 v1.2；没有板子时用 --demo 跑假源"),
+                                 8000);
     });
 }
 
-QWidget *MainWindow::buildSelfTestPage()
+void MainWindow::quickScreenshot()
 {
-    auto *page = new QWidget(this);
-    auto *vl = new QVBoxLayout(page);
-    auto *lbl = new QLabel(page);
-    lbl->setWordWrap(true);
-    lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    lbl->setFont(theme::monoFont(10));
-    lbl->setText(runProtocolSelfTest());
-    vl->addWidget(lbl);
-    vl->addStretch();
-    return page;
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QStringLiteral("/shots");
+    QDir().mkpath(dir);
+    const QString name = QStringLiteral("上位机_%1_%2.png")
+                             .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")))
+                             .arg(++m_shotCount);
+    const QString path = dir + QLatin1Char('/') + name;
+    if (grab().save(path)) {
+        // 顺手把路径放进剪贴板：写实验报告时直接粘贴
+        QApplication::clipboard()->setText(path);
+        statusBar()->showMessage(QStringLiteral("截图已保存（路径已复制到剪贴板）：%1").arg(path), 8000);
+    } else {
+        statusBar()->showMessage(QStringLiteral("截图保存失败：%1").arg(path), 8000);
+    }
 }
 
 void MainWindow::refreshStatusBar()
 {
+    // ---- 假源水印：只要有一条链路在跑假源，就必须明确标出来 ----
+    bool demo = false;
+    for (int i = 0; i < static_cast<int>(io::LinkKind::Count); ++i) {
+        if (m_mgr->mode(static_cast<io::LinkKind>(i)) == io::LinkManager::Mode::Replay &&
+            m_mgr->isOpen(static_cast<io::LinkKind>(i))) {
+            demo = true;
+        }
+    }
+    m_stDemo->setText(demo ? QStringLiteral("⚠ 演示数据（假源）—— 非真实测量")
+                           : QStringLiteral("真实串口数据"));
+    m_stDemo->setStyleSheet(QStringLiteral("color:%1; padding-right:10px;")
+                                .arg(QString::fromLatin1(demo ? theme::kWarn : theme::kOffline)));
+
     // ---- 两条链路：状态 + 解帧（同一来源：链路自身维护的统计）----
     auto linkText = [this](io::LinkKind k) {
         const io::LinkStats s = m_mgr->stats(k);
@@ -180,7 +275,15 @@ void MainWindow::refreshStatusBar()
         m_stBattery->setStyleSheet(QStringLiteral("color:%1;").arg(QString::fromLatin1(theme::kOffline)));
     }
 
-    // ---- 安全（原样显示，不做平滑）----
+    // ---- 报警与安全（原样显示，不做平滑）----
+    const int active = m_alarm->activeCount();
+    m_stAlarm->setText(active > 0 ? QStringLiteral("⚠ 报警 %1 项").arg(active)
+                                  : QStringLiteral("无报警"));
+    m_stAlarm->setStyleSheet(
+        QStringLiteral("color:%1;")
+            .arg(QString::fromLatin1(active > 0 ? theme::kAlarm : theme::kOffline)));
+    m_stAlarm->setToolTip(m_alarm->activeSummary());
+
     const domain::Severity sev = m_state->safetySeverity();
     m_stSafety->setText(m_state->safetySummary());
     m_stSafety->setStyleSheet(QStringLiteral("color:%1;")
@@ -189,7 +292,23 @@ void MainWindow::refreshStatusBar()
                                                               : sev == domain::Severity::Ok   ? theme::kOk
                                                                                              : theme::kOffline)));
 
-    m_stFrames->setText(QStringLiteral("格式错帧 %1").arg(m_state->malformedFrames()));
+    m_stFrames->setText(QStringLiteral("事件 %1 · 格式错帧 %2")
+                            .arg(m_log->size())
+                            .arg(m_state->malformedFrames()));
+}
+
+QWidget *MainWindow::buildSelfTestPage()
+{
+    auto *page = new QWidget(this);
+    auto *vl = new QVBoxLayout(page);
+    auto *lbl = new QLabel(page);
+    lbl->setWordWrap(true);
+    lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    lbl->setFont(theme::monoFont(10));
+    lbl->setText(runProtocolSelfTest());
+    vl->addWidget(lbl);
+    vl->addStretch();
+    return page;
 }
 
 QString MainWindow::runProtocolSelfTest()
@@ -254,7 +373,7 @@ QString MainWindow::runProtocolSelfTest()
              .arg(lenOk ? QStringLiteral("✔ 通过") : QStringLiteral("✘ 失败"));
     s += QStringLiteral("\n协议版本：v1.2（v1.1 冻结 + 0x15 诊断 + 0x16 三环实况）\n");
     s += QStringLiteral("domain 层：单位换算集中在 domain/units，帧解析在 domain/frames，\n"
-                        "状态聚合与安全判定在 domain/vehicle_state（界面不解析任何字节）。\n");
+                        "状态聚合在 domain/vehicle_state，告警判定与迟滞在 domain/alarm（界面不解析任何字节）。\n");
 
     const bool allOk = crcOk && rtOk && splitOk && dropOk && lenOk;
     s += QStringLiteral("\n结论：%1")
