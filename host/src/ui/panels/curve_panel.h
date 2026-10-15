@@ -80,6 +80,7 @@ private:
     ValueCard *m_mq135Card = nullptr;
     ValueCard *m_voltCard = nullptr;
     ValueCard *m_thCard = nullptr;
+    ValueCard *m_humCard = nullptr;
 
     QDoubleSpinBox *m_mq2Limit = nullptr;
     QDoubleSpinBox *m_mq135Limit = nullptr;

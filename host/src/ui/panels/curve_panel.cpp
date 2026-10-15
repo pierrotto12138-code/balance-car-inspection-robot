@@ -146,12 +146,11 @@ void CurvePanel::buildUi()
         auto *cards = new QHBoxLayout;
         cards->setSpacing(6);
         m_thCard = new ValueCard(QStringLiteral("温度"), QStringLiteral("℃"), 1, box);
-        auto *humCard = new ValueCard(QStringLiteral("湿度"), QStringLiteral("%RH"), 1, box);
+        m_humCard = new ValueCard(QStringLiteral("湿度"), QStringLiteral("%RH"), 1, box);
         m_thCard->setValuePointSize(15);
-        humCard->setValuePointSize(15);
-        humCard->setObjectName(QStringLiteral("humCard"));
+        m_humCard->setValuePointSize(15);
         cards->addWidget(m_thCard);
-        cards->addWidget(humCard);
+        cards->addWidget(m_humCard);
         vl->addLayout(cards);
         m_thPlot = new ScopePlot(QString(), box);
         m_thPlot->setObjectName(QStringLiteral("thPlot"));
@@ -342,19 +341,18 @@ void CurvePanel::updateCards()
     setCard(m_mq135Card, e.mq135Ppm, proto::up::kEnvGas, envOk && e.mq135Ready(),
             m_alarm->record(domain::AlarmEngine::kGasMq135).active ? Severity::Alarm : Severity::Ok);
     if (envOk && e.dht11Valid()) {
+        // 两张卡片各自写清自己的信息：温度卡说来源/新鲜度，湿度卡不要再重复温度的内容
+        // （★ 曾经把湿度塞进温度卡的副标题，结果湿度卡自己那行一直留着"无数据"——
+        //   `setValue` 不会清掉副标题，界面于是自相矛盾：值是 61.0 却写着"无数据"。）
+        const qint64 age = st.ageMs(proto::up::kEnvGas);
         m_thCard->setValue(e.tempC);
-        m_thCard->setSub(QStringLiteral("湿度 %1 %RH")
-                             .arg(domain::units::number(e.humidityPct, 1)));
+        m_thCard->setSub(age < 0 ? QStringLiteral("--") : QStringLiteral("%1 ms 前").arg(age));
+        m_humCard->setValue(e.humidityPct);
+        m_humCard->setSub(QStringLiteral("DHT11 · %1").arg(
+            age < 0 ? QStringLiteral("--") : QStringLiteral("%1 ms 前").arg(age)));
     } else {
         m_thCard->setInvalid(envOk ? QStringLiteral("DHT11 无效") : QStringLiteral("无数据"));
-    }
-    // 温度/湿度图的第二张卡片（按 objectName 找，避免再加一个成员）
-    if (auto *hum = m_thCard->parentWidget()->findChild<ValueCard *>(QStringLiteral("humCard"))) {
-        if (envOk && e.dht11Valid()) {
-            hum->setValue(e.humidityPct);
-        } else {
-            hum->setInvalid(QStringLiteral("无数据"));
-        }
+        m_humCard->setInvalid(envOk ? QStringLiteral("DHT11 无效") : QStringLiteral("无数据"));
     }
 
     if (st.batteryValid()) {

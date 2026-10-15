@@ -433,7 +433,12 @@ void ReplayLink::onTick()
     const qint64 spikeIdx = static_cast<qint64>(m_virtualMs / kSpikePeriodMs);
     if (inSpike(m_virtualMs) && spikeIdx != m_lastSpikeIdx) {
         m_lastSpikeIdx = spikeIdx; // 只在"进入冲高窗口"的那一沿报一次（重复帧不重复上报）
-        emitRawFrame(makeEvent(proto::EventCode::GasOverLimit, vms));
+        // ★ 时间戳用**窗口起点**（spikeIdx × 周期），而不是本次 tick 的时刻：
+        //   两条假源链路的 tick 相差几毫秒，若各用各的时刻，同一次冲高会被造出
+        //   **两个不同的帧**（内容不同 ⇒ 上位机的跨链路去重认不出来）→ 事件流出现两条
+        //   "气体超阈值"。真实固件是同一帧发两路，所以假源也必须造出**逐字节相同**的帧。
+        emitRawFrame(makeEvent(proto::EventCode::GasOverLimit,
+                               static_cast<quint32>(spikeIdx * kSpikePeriodMs)));
     }
 
     emitStats();

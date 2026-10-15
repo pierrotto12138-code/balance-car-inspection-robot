@@ -337,7 +337,8 @@ private slots:
         // 内容不同 ⇒ 是另一次测量
         st.onFrame(io::LinkKind::Bluetooth, proto::up::kEnvGas, testframes::envPpm(21.0, 30.0));
         QCOMPARE(st.duplicateFrames(), quint64(1));
-        QCOMPARE(updates.count(), 3);
+        // 4 次 dataUpdated = env(新) + pose(新) + pose(同链路重复**也算新**) + env(内容不同)
+        QCOMPARE(updates.count(), 4);
     }
 
     void state_oledRateAndTicks()

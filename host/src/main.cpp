@@ -47,11 +47,22 @@ QString describeAlarms(const domain::VehicleState &st, const domain::AlarmEngine
     if (alarm.activeCount() == 0 && !alarm.history().isEmpty()) {
         QStringList cleared;
         for (const domain::AlarmRecord &r : alarm.history()) {
-            cleared << QStringLiteral("%1（%2 次跃变，峰值 %3 %4）")
-                           .arg(r.title)
-                           .arg(r.active ? QStringLiteral("仍活动") : QStringLiteral("已解除"))
-                           .arg(domain::units::number(r.peak, r.unit == QStringLiteral("V") ? 2 : 1),
-                                r.unit);
+            QString extra;
+            if (r.unit == QStringLiteral("ms")) {
+                extra = QStringLiteral("最大间隔 %1 s").arg(r.peak / 1000.0, 0, 'f', 1);
+            } else if (!r.unit.isEmpty()) {
+                const QString extreme = (r.key == domain::AlarmEngine::kBatteryLow)
+                                            ? QStringLiteral("最低")
+                                            : QStringLiteral("峰值");
+                extra = QStringLiteral("%1 %2 %3")
+                            .arg(extreme,
+                                 domain::units::number(r.peak,
+                                                       r.unit == QStringLiteral("V") ? 2 : 1),
+                                 r.unit);
+            }
+            cleared << QStringLiteral("%1（%2%3）")
+                           .arg(r.title, r.active ? QStringLiteral("仍活动") : QStringLiteral("已解除"),
+                                extra.isEmpty() ? QString() : (QStringLiteral("，") + extra));
         }
         add(QStringLiteral("  告警记录：%1").arg(cleared.join(QStringLiteral("；"))));
     }
