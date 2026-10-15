@@ -48,6 +48,26 @@ add_library(domain STATIC
 target_include_directories(domain PUBLIC src)
 target_link_libraries(domain PUBLIC protocol Qt6::Core)
 
+# ---------------------------------------------------------------- 第三方：QCustomPlot（P2 曲线）
+# 原样内置源码（未改动），许可与来源见 third_party/qcustomplot/README.md。
+add_library(qcustomplot STATIC third_party/qcustomplot/qcustomplot.cpp)
+target_include_directories(qcustomplot PUBLIC third_party/qcustomplot)
+target_link_libraries(qcustomplot PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets)
+# 不做打印导出 ⇒ 少一个 Qt6::PrintSupport 依赖（打包更小）
+target_compile_definitions(qcustomplot PUBLIC QT_NO_PRINTER)
+# ★ 只对**第三方源码**关告警：本项目要求自研代码零告警，但第三方源码的告警不该混进来
+#   （同时不改它的代码，升级时能整体替换）。
+target_compile_options(qcustomplot PRIVATE -w)
+
+# ---------------------------------------------------------------- 数据层（P2 起）
+# 事件流/会话/记录：只依赖 Qt6::Core（不依赖界面），因此可脱离界面单测。
+add_library(hostdata STATIC
+    src/data/event_log.cpp
+    src/data/event_log.h
+)
+target_include_directories(hostdata PUBLIC src)
+target_link_libraries(hostdata PUBLIC domain Qt6::Core)
+
 # ---------------------------------------------------------------- 界面层（P1）
 # 做成**静态库**而不是直接编进 exe：这样界面可以被"无显示器"的冒烟测试直接驱动
 # （tests/test_ui.cpp），而不是只能靠人肉点界面。
@@ -58,17 +78,23 @@ add_library(hostui STATIC
     src/ui/p0panel.h
     src/ui/panels/overview_panel.cpp
     src/ui/panels/overview_panel.h
+    src/ui/panels/curve_panel.cpp
+    src/ui/panels/curve_panel.h
+    src/ui/panels/event_panel.cpp
+    src/ui/panels/event_panel.h
     src/ui/widgets/value_card.cpp
     src/ui/widgets/value_card.h
     src/ui/widgets/led_indicator.cpp
     src/ui/widgets/led_indicator.h
     src/ui/widgets/attitude_indicator.cpp
     src/ui/widgets/attitude_indicator.h
+    src/ui/widgets/scope_plot.cpp
+    src/ui/widgets/scope_plot.h
     src/ui/theme/theme.cpp
     src/ui/theme/theme.h
 )
 target_include_directories(hostui PUBLIC src)
-target_link_libraries(hostui PUBLIC hostio domain Qt6::Widgets)
+target_link_libraries(hostui PUBLIC hostio domain hostdata qcustomplot Qt6::Widgets)
 
 # ---------------------------------------------------------------- 上位机（装配层）
 add_executable(host src/main.cpp)

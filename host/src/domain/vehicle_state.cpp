@@ -269,6 +269,7 @@ void VehicleState::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data
         return;
     }
     m_rec.insert(cmd, Record{kind, t});
+    emit dataUpdated(cmd);
     emit changed();
 }
 

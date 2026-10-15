@@ -14,6 +14,10 @@
    而"先烧裸机版对照"是本项目排查时序问题的标准退路（上板自检清单 §3.3），
    退路被自己弄断过一次。规则：**被两种构建共用的全局量，定义点不能放在条件块里**。*/
 volatile u8 g_pwmApplied = 0;
+/* ★ 2026-10-15：用户用 USER 键手动停车后置 1，用于挡住厂商 Put_Down() 的自动启动。
+   原来按键停下车后，Put_Down() 在几拍内又把 Flag_Stop 清 0（厂商「放下即启动」设计），
+   现象是「USER 键停不住」。本标志让「用户手动停」保持有效，直到用户再次按键使能。*/
+static u8 s_keyDisabled = 0;
 #include "filter.h"
 #include "MPU6050.h"
 #include "inv_mpu.h"
@@ -109,7 +113,7 @@ int EXTI15_10_IRQHandler(void)
 #ifdef USE_FREERTOS
 			/* ★ 安全停车锁存期间，"放下自动使能"这条厂商逻辑必须被挡住，
 				否则把车拿起来再放下就会**绕过安全停车**（决策 41 要求锁存、不自动起步）。*/
-			if(Put_Down(Angle_Balance,Encoder_Left,Encoder_Right) && App_MotorDisable==0)
+			if(Put_Down(Angle_Balance,Encoder_Left,Encoder_Right) && App_MotorDisable==0 && s_keyDisabled==0)
 			Flag_Stop=0;	                                                      //===如果被放下就启动电机
 			/* ★ 锁存优先：本拍强制关电机（Turn_Off 会据此真正把 PWM 置 0）*/
 			if(App_MotorDisable) Flag_Stop=1;
@@ -305,7 +309,11 @@ void Key(void)
 			· 双击 = **切换 OLED 显示页**（原本是切 Flag_Show，而 RTOS 模式不用 DataScope，
 					那条串口已改成有线协议链路 —— 见 pages.h 的说明）
 			· 长按 = 普通/避障（厂商原语义，不变）                                              */
-	if(tmp==1 && App_MotorDisable==0)Flag_Stop=!Flag_Stop;//单击控制小车的启停
+	if(tmp==1 && App_MotorDisable==0)
+	{
+		Flag_Stop=!Flag_Stop;                       /* 单击 = 启停 */
+		s_keyDisabled=(u8)(Flag_Stop?1:0);         /* ★ 记住用户意图 */
+	}//单击控制小车的启停
 	if(tmp==2)Pages_Next();              //双击切换 OLED 显示页
 #else
 	if(tmp==1)Flag_Stop=!Flag_Stop;//单击控制小车的启停
