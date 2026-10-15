@@ -62,22 +62,29 @@ void AlarmEngine::setActive(AlarmRecord &r, bool active)
 }
 
 void AlarmEngine::judgeThresholdFor(const QString &key, const QString &title, Severity sev,
-                                   const QString &unit, double raiseAt, double clearBelow,
-                                   double value)
+                                   const QString &unit, double badAt, double clearAt, double value,
+                                   bool lowIsBad)
 {
-    AlarmRecord &r = slot(key, title, sev, unit, raiseAt);
-    judgeThreshold(r, value, raiseAt, clearBelow);
+    AlarmRecord &r = slot(key, title, sev, unit, badAt);
+    judgeThreshold(r, value, badAt, clearAt, lowIsBad);
 }
 
-void AlarmEngine::judgeThreshold(AlarmRecord &r, double value, double raiseAt, double clearBelow)
+void AlarmEngine::judgeThreshold(AlarmRecord &r, double value, double badAt, double clearAt,
+                                 bool lowIsBad)
 {
     r.value = value;
     if (r.active) {
-        r.peak = std::max(r.peak, value);
+        r.peak = lowIsBad ? std::min(r.peak, value) : std::max(r.peak, value);
     }
 
+    // "坏"与"回到正常"的比较方向由 lowIsBad 决定：
+    //   高=坏（气体）：坏 ⇔ value ≥ badAt；好 ⇔ value ≤ clearAt
+    //   低=坏（电压）：坏 ⇔ value ≤ badAt；好 ⇔ value ≥ clearAt
+    const bool bad = lowIsBad ? (value <= badAt) : (value >= badAt);
+    const bool good = lowIsBad ? (value >= clearAt) : (value <= clearAt);
+
     if (!r.active) {
-        if (value >= raiseAt) {
+        if (bad) {
             if (r.overCount < m_th.confirmFrames) {
                 ++r.overCount;
             }
@@ -90,7 +97,7 @@ void AlarmEngine::judgeThreshold(AlarmRecord &r, double value, double raiseAt, d
             r.overCount = 0; // 中途回到正常 ⇒ 确认计数清零（不累计"间歇性超限"）
         }
     } else {
-        if (value <= clearBelow) {
+        if (good) {
             if (r.underCount < m_th.clearFrames) {
                 ++r.underCount;
             }
@@ -137,9 +144,10 @@ void AlarmEngine::onFrameDecoded(const VehicleState &st, quint8 cmd)
     }
     case proto::up::kDiag: {
         if (st.batteryValid()) {
+            // ★ 低压是"低了才坏"：badAt = 11.10 V，clearAt = 11.40 V（迟滞往上）
             judgeThresholdFor(kBatteryLow, QStringLiteral("电池低压"), Severity::Warn,
                               QStringLiteral("V"), m_th.lowBatteryV, m_th.lowBatteryClearV,
-                              st.diag().batteryV);
+                              st.diag().batteryV, /*lowIsBad=*/true);
         }
         break;
     }

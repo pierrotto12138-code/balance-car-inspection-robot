@@ -759,6 +759,9 @@ void App_Start(void)
 	/* ★ 2026-10-15：调试期"出厂增益"覆盖（见 app_config.h）。
 	     放在 ParamStore_Load() 之后 ⇒ 无论 Flash 里存的是什么，都会按这里强制生效；
 	     这样才能摆脱"远程写参数会被复位抹掉"的反复。*/
+	(void)ParamStore_SetOne(PARAM_BALANCE_KP,  CFG_OVR_BALANCE_KP);
+	(void)ParamStore_SetOne(PARAM_BALANCE_KD,  CFG_OVR_BALANCE_KD);
+	(void)ParamStore_SetOne(PARAM_ZHONGZHI,    CFG_OVR_ZHONGZHI);
 	(void)ParamStore_SetOne(PARAM_VELOCITY_KP, CFG_OVR_VELOCITY_KP);
 	(void)ParamStore_SetOne(PARAM_VELOCITY_KI, CFG_OVR_VELOCITY_KI);
 	(void)ParamStore_SetOne(PARAM_TURN_KP,     CFG_OVR_TURN_KP);

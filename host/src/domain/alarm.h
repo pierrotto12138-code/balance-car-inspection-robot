@@ -109,13 +109,18 @@ private:
                       double threshold);
     /// 阈值类规则一步到位：查记录 → 判定（超限连续确认→报；回到回差以下连续确认→解除）
     ///
+    /// ★ 两个方向都要支持：气体是"高了才坏"，**电压是"低了才坏"** ——
+    ///   把方向写死在"高=坏"里，低压保护就会变成"电压越高越报警"（反向），
+    ///   而现象上只是"低压从来不报"，很难往这里想。
+    ///
     /// ★ 为什么不让调用方先拿引用再判：`slot()` 在插入新键时可能触发 QHash 重哈希，
     ///   先前拿到的 `AlarmRecord&` 会失效（悬垂引用）—— 把"查+判"封在一个函数里，
     ///   这个坑就不存在了。
     void judgeThresholdFor(const QString &key, const QString &title, Severity sev,
-                           const QString &unit, double raiseAt, double clearBelow, double value);
+                           const QString &unit, double badAt, double clearAt, double value,
+                           bool lowIsBad = false);
     /// 内部的判定核心（只在 judgeThresholdFor 里用，引用不会跨调用存活）
-    void judgeThreshold(AlarmRecord &r, double value, double raiseAt, double clearBelow);
+    void judgeThreshold(AlarmRecord &r, double value, double badAt, double clearAt, bool lowIsBad);
     /// 状态类规则：直接按布尔量报/解除（锁存、失联）
     void judgeState(AlarmRecord &r, bool active, double value);
     /// 把一条记录从"不活动"翻到"活动"（或反向），并发出信号

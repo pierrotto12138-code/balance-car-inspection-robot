@@ -80,8 +80,11 @@ QString EventLog::alarmDetail(const domain::AlarmRecord &r, bool raised) const
             .arg(v, r.unit, domain::units::number(r.threshold, r.unit == QStringLiteral("V") ? 2 : 1));
     }
     const qint64 dur = (r.clearMs >= 0 && r.onsetMs >= 0) ? (r.clearMs - r.onsetMs) : -1;
-    return QStringLiteral("峰值 %1 %2 · 持续 %3 s")
-        .arg(domain::units::number(r.peak, r.unit == QStringLiteral("V") ? 2 : 1), r.unit)
+    // 低压是"越低越坏"，所以它该显示"最低"而不是"峰值"（措辞错了会被误读成"电压冲到多高"）
+    const QString extreme = (r.key == domain::AlarmEngine::kBatteryLow) ? QStringLiteral("最低")
+                                                                       : QStringLiteral("峰值");
+    return QStringLiteral("%1 %2 %3 · 持续 %4 s")
+        .arg(extreme, domain::units::number(r.peak, r.unit == QStringLiteral("V") ? 2 : 1), r.unit)
         .arg(dur < 0 ? 0.0 : dur / 1000.0, 0, 'f', 1);
 }
 
