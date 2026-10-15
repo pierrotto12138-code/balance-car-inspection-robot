@@ -196,7 +196,21 @@ float Gas_Update(GasChannel *ch, uint16_t adcRaw, float tempC, float humiRh, int
 void Gas_CalibrateAdd(GasChannel *ch, uint16_t adcRaw)
 {
 	float vao = Gas_AdcToVaoMv(&ch->cfg, adcRaw);
-	ch->r0Sum += Gas_VaoToRs(&ch->cfg, vao);
+	float rs = Gas_VaoToRs(&ch->cfg, vao);
+
+	/* ★ B 2026-10-13 修正（审计"会错"级缺陷 B1；真机已坐实）：
+	 * 原来**无条件**把每个样本累加进 r0Sum，于是：
+	 *   · 传感器没插/加热丝断 → AO≈0 → `Gas_VaoToRs` 钳到 0 → r0=0 → 通道静默失效（漏报）；
+	 *   · 更坏的是 `Vao→0` 时 Rs 公式 `(VCC·RL)/Vao−RL` 得到**极大值** → r0 是个大数、
+	 *     比值与 ppm 却是"看着很合理"的数字 —— 真机实测：J10 空插座 raw=1~2，
+	 *     上位机却报 17~24 ppm（**假数据比没数据更危险**）。
+	 *   ⇒ 判据不是"有没有读数"，而是"这个读数是否落在物理上可能的区间"。
+	 * 拒绝三类无效样本：① 近零（未插/未加热）② 顶到量程（饱和）③ Rs 无意义。*/
+	if (vao < 50.0f || adcRaw <= 20u || adcRaw >= 4080u || rs <= 0.0f)
+	{
+		return;                      /* 不计入、不增加 r0Count → 标定自然判定为失败 */
+	}
+	ch->r0Sum += rs;
 	ch->r0Count++;
 }
 
@@ -204,6 +218,10 @@ float Gas_CalibrateFinish(GasChannel *ch)
 {
 	if (ch->r0Count == 0)
 	{
+		/* ★ 样本全无效（例如没插模块）→ 明确"未标定"：
+		   把 r0 置 0，让 `sensor_report` 的就绪位判据（r0 > 0）自然为假，
+		   从而**不会**上报"就绪 + ppm"，也就不会用假数字骗自己。*/
+		ch->r0 = 0.0f;
 		return 0.0f;
 	}
 	{
