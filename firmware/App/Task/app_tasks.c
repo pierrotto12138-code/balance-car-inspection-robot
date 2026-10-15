@@ -755,6 +755,12 @@ void App_Start(void)
 
 	/* ★ P2 分层整改：把"让出 CPU 的延时"注入 System 层，紧接着启动调度器。
 		钩子注册 ⟺ 调度器已启动；注册之前的 delay_ms() 仍走忙等，行为与原来一致。 */
+#if CFG_DEBUG_DISABLE_VELOCITY
+	/* ★ 调试期：上电即摘掉速度环（见 app_config.h 的说明），只留平衡环，便于单独验方向。
+	   注意：只改内存中的生效值，**不写 Flash**（ParamStore_Save 未被调用）。*/
+	(void)ParamStore_SetOne(PARAM_VELOCITY_KP, 0.0f);
+	(void)ParamStore_SetOne(PARAM_VELOCITY_KI, 0.0f);
+#endif
 	Delay_SetMsHook(app_delay_ms);
 	s_msHookInstalled = 1;
 	vTaskStartScheduler();
