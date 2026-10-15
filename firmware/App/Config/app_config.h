@@ -112,8 +112,8 @@
  *   ① 两轮**反向对拧**（一个往前一个往后） ⇒ 电机有一侧反 ⇒ 翻 CFG_MOTOR_*_INVERT
  *   ② 两轮**同向**但车往反方向跑（前倾却往后走） ⇒ 编码器有一侧反 ⇒ 翻 CFG_ENCODER_*_INVERT
  * 当前取值：右轮电机翻向（按"最可能是一侧电机接线反了"先试这个）。*/
-#define CFG_MOTOR_LEFT_INVERT   0
-#define CFG_MOTOR_RIGHT_INVERT  0
+#define CFG_MOTOR_LEFT_INVERT   1
+#define CFG_MOTOR_RIGHT_INVERT  1
 /* ★ 2026-10-13 由真机二次判据唯一的解（纯逻辑推导，不再试）：
  *   初始(0,0)：两轮**反向** ⇒ 两侧物理极性恰好**一个是反的**；
  *   试(0,1)：变成"**同向但整体反**"（情况 3）⇒ 说明反的是**左**侧，

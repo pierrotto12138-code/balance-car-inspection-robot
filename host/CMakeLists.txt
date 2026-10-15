@@ -55,6 +55,16 @@ add_executable(host
     src/ui/mainwindow.h
     src/ui/p0panel.cpp
     src/ui/p0panel.h
+    src/ui/panels/overview_panel.cpp
+    src/ui/panels/overview_panel.h
+    src/ui/widgets/value_card.cpp
+    src/ui/widgets/value_card.h
+    src/ui/widgets/led_indicator.cpp
+    src/ui/widgets/led_indicator.h
+    src/ui/widgets/attitude_indicator.cpp
+    src/ui/widgets/attitude_indicator.h
+    src/ui/theme/theme.cpp
+    src/ui/theme/theme.h
 )
 target_link_libraries(host PRIVATE hostio domain Qt6::Widgets)
 

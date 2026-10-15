@@ -74,6 +74,8 @@ public:
     bool linkAlive() const;
 
     quint64 frameCount(io::LinkKind kind) const;
+    /// 该链路最近一次收到帧距今多久（<0 = 该链路从未收到过帧）
+    qint64 linkAgeMs(io::LinkKind kind) const;
     /// 格式错帧数（长度不符）：**必须能被看见** —— 它是"固件与协议不一致"的第一证据
     quint64 malformedFrames() const { return m_malformed; }
     /// 协议外命令数（可能是将来新增的合法命令，不作为错误）

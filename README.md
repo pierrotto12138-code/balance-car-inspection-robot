@@ -2,12 +2,12 @@
 
 > 课程：测控系统综合设计 ｜ 3.0 学分 / 3 周 ｜ 控制科学与工程学院
 > 项目：**基于平衡小车的仓储环境安全巡检机器人**
-> **当前阶段：阶段三 —— 回归 MiniBalance 平台，重做底板（原理图 ✅ / PCB ✅ / 已下单，等货）**
+> **当前阶段：阶段三 —— 回归 MiniBalance 平台，重做底板（原理图 ✅ / PCB ✅ / 已焊好，真机联调中）**
 >
 > | 你是谁 | 先看哪份 |
 > |---|---|
 > | **👤 人（新读者）** | [`docs/handoff/交接说明.md`](docs/handoff/交接说明.md) —— 全部已确认事实、决策、资产位置、踩坑、下一步 |
-> | **🤖 AI 编码代理** | [`AGENTS.md`](AGENTS.md) —— 路径、桥接、**29 条踩坑铁律**、能力边界 |
+> | **🤖 AI 编码代理** | [`AGENTS.md`](AGENTS.md) —— 路径、桥接、**36 条踩坑铁律**、能力边界 |
 > | **📚 找文档** | [`docs/文档索引.md`](docs/文档索引.md) |
 > | **🔧 板子到了要焊** | [`docs/design_hardware/焊接调试手册.md`](docs/design_hardware/焊接调试手册.md) |
 > | **🔍 焊完逐项自检** | [`docs/design_hardware/上板自检清单.md`](docs/design_hardware/上板自检清单.md) |
@@ -42,12 +42,12 @@
 > 而控制板（含板载 IMU）与各拓展模块都是已验证的现成品。
 > 这样 **A1 有真实的 PCB 设计工作，风险又可控**。
 
-> **📌 底板"改"板原理图已于 2026-10-05 完工**：
-> 104 元件 / 52 位号 / 65 网络，**52 个位号全部有封装与立创料号**，**DRC 致命错误 0**。
+> **📌 板子与元器件已全部到货并焊好，已进入真机联调**（2026-10-15 第二轮）：
+> 原理图完工：104 元件 / 52 位号 / 65 网络，**52 个位号全部有封装与立创料号**，**DRC 致命错误 0**。
 > 详见 [`docs/design_hardware/原理图完善计划.md`](docs/design_hardware/原理图完善计划.md) §6.5。
 >
-> **📌 底板"改"板 PCB 已于 2026-10-08 完工 —— 正在等板子与元器件到货**：
-> 523 走线段 / 76 过孔 / **顶层 + 底层实心 GND 铺铜**，**DRC 零错误、零未连接**。
+> **📌 底板"改"板 PCB 已于 2026-10-08 完工**：523 走线段 / 76 过孔 / **顶层 + 底层实心 GND 铺铜**，
+> **DRC 零错误、零未连接**。
 > 最终渲染图：[`docs/design_hardware/图/PCB2_最终.png`](docs/design_hardware/图/PCB2_最终.png)。
 > 另存了一份独立工程：`…\LCEDA-Pro\projects\26测控系统设计\`（板"改"的副本）。
 
@@ -60,6 +60,11 @@
 | **DHT11** | 环境温湿度（用于气体补偿） | 单总线 GPIO **PA7**（**R14 4.7k 上拉**）|
 | **红外避障 ×2** | 近距避障 / 沿边循迹 | GPIO（L→**PB12**、R→PC1）|
 | **蜂鸣器** | 超阈值声光报警 | **有源模块，GPIO 开关**（PC5 直连，低电平响）|
+
+> **📌 台架现状（2026-10-15）**：上表是**板上的座定义**；真机台架上目前**只有 MQ-135，插在 `J13`**
+> （`J10` 空、MQ-2 模块已烧毁待补）。`J10`/`J13` 四脚电气相同（`AO/DO/GND/+5V`），插错座不会损坏，
+> 只是**名字对不上** —— 现在 MQ-135 的读数被当成 `MQ2` 上报（走 `PA5`），而 `MQ135` 字段（`PA6`/`J10`）是空输入。
+> **在 MQ-2 装回 `J10` 之前，上位机上名为 `MQ2` 的那一路才是真在工作。**
 
 ### 2.2 引脚与接口
 
@@ -84,7 +89,7 @@
 ```
 .
 ├── README.md                 ← 你在这里（人类入口）
-├── AGENTS.md                 ← 🤖 AI 编码代理入口（路径/桥接/28 条铁律/能力边界）
+├── AGENTS.md                 ← 🤖 AI 编码代理入口（路径/桥接/36 条铁律/能力边界）
 ├── .gitignore
 ├── archive/                  # 阶段一/阶段二 的方案归档 zip
 ├── Base/                     # 学校提供的原始资料（只读，不进版本控制）
@@ -107,7 +112,7 @@
 │   ├── photos/               # 实物照片
 │   └── *.py                  # EDA 工程文件辅助脚本
 ├── firmware/                 # B：STM32 固件工程
-├── host/                     # C：Qt 上位机（协议层已通过 13 项测试）
+├── host/                     # C：Qt 上位机（P0 已完成：链路层 + 通信诊断面板 + 假源回放；ctest 2/2）
 └── tools/                    # 辅助脚本（EDA API 桥接 + 核查）
 ```
 
@@ -135,19 +140,34 @@
 |---|---|
 | 任务书 / 项目计划书 | ✅ 已提交（**无需重交**） |
 | 引脚分配表（源码+实拍互证） | ✅ 完成，待实物终验 |
-| 双向通信协议 v1.0 | ✅ 完成 |
-| 上位机协议层 | ✅ **13 项单元测试全部通过** |
+| 双向通信协议 **v1.2** | ✅ 完成（v1.1 冻结 + `0x15` 诊断帧 / `0x16` 三环实况增量） |
+| 上位机协议层 | ✅ **13 项单元测试全部通过**（链路层另有 8 项，`ctest` 2/2） |
 | MQ 气体算法调研 | ✅ 完成（参数逐行核实） |
 | 车体组成解析 | ✅ 完成 |
 | **底板原理图（A1）** | ✅ **完工** —— 104 元件 / 52 位号 / 65 网络 / 全有封装与料号 / DRC 致命 0 |
 | **底板 PCB（A1）** | ✅ **完工** —— 523 走线段 / 76 过孔 / 双面实心 GND 铺铜 / **DRC 零错误零未连接** |
-| **PCB 打样 + 元器件下单** | ✅ **全部到货，正在焊接** |
-| 固件改造（B） | 🔶 **P0~P5（离线部分）完成 + 复查/接口完善** —— `firmware/` 用 GCC 一键构建出 `.hex`；**协议 117 + 传感器 1235 + 状态机 76 + 调参 29 条断言全过；四任务已跑起来、程序说明文档已出**（Python ↔ 上位机 ↔ 固件三方交叉验证），见 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md) |
-| 上位机界面（C） | 🔶 **已有方案与计划**：[`docs/design_host/C部分方案与计划.md`](docs/design_host/C部分方案与计划.md)（调研 + 选型 + 五层架构 + P0~P5）；协议层已完成并过单测 |
+| **PCB 打样 + 元器件下单** | ✅ **已到货并焊好，进入真机联调**（2026-10-15 第二轮） |
+| 固件改造（B） | 🔶 **离线部分完成 + 两轮真机联调修正** —— `firmware/` 用 GCC 一键构建出 `.hex`；**离线核验 9 项全通过：协议 117 + 传感器 1235 + 状态机 80 + 调参 29 条断言**，另加 `tune.py --selftest`、交叉编译、向量表、中断安全、引脚基线；现占用 **Flash 约 66.5 KB / RAM 约 32.8 KB**；四任务已跑起来、程序说明文档已出（Python ↔ 上位机 ↔ 固件三方交叉验证），见 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md) |
+| 上位机界面（C） | 🔶 **P0（通信链路）已完成**：`io/` 链路层 + 通信诊断面板 + 假源回放，`ctest` 2/2；`host.exe --selftest` 退出码 0。P1~P5 见 [`docs/design_host/C部分方案与计划.md`](docs/design_host/C部分方案与计划.md) |
 
-> **下一步**：**B 的离线部分已完成**（见 `docs/design_firmware/程序说明文档.md`），剩余为**到货实测**；
-> C 的上位机界面待推进；A1 的焊接与上板自检见 `docs/design_hardware/焊接调试手册.md` 与
+> **下一步**：**B 的离线部分与两轮真机联调修正已完成**（见 `docs/design_firmware/程序说明文档.md`
+> 与 [`docs/design_firmware/真机联调问题清单.md`](docs/design_firmware/真机联调问题清单.md)），剩余为
+> **速度环复位后的 PID 整定**与**待修项**（见问题清单 §3 A 组）；
+> C 的上位机界面待推进；A1 的上板自检见
 > [`docs/design_hardware/上板自检清单.md`](docs/design_hardware/上板自检清单.md)。
+>
+> **📌 真机台架现状（2026-10-15）**：**只有 MQ-135，插在 `J13`**（`J10` 空、MQ-2 模块已烧毁待补）；
+> DHT11 正常；电池 **11.8 V**；**OLED 正常显示**（页 1 / 页 2 / 厂商页）——
+> 早期文档里"传感器全未就绪""OLED 乱码"的说法**均已解决**，不要再按旧现象排障。
+>
+> **📌 蓝牙链路结论（2026-10-15 实测）**：Windows 蓝牙 SPP **能配对但建不出 COM 口**；
+> Python 的 `AF_BLUETOOTH` **在 Windows 上不可用**、`pybluez2` 在 Python 3.13 上编译不过；
+> 本 Qt 套件**未安装 Qt Bluetooth 模块**。手头两颗模块：一颗 DX-Smart 克隆（老式 HC-06 方言、
+> **纯从机**、`AT+ROLE`/`AT+ADDR` 不回），一颗 **JDY-33**（经典 SPP + BLE、可读 `AT+LADDR`、
+> 已配名 `Pie` / 密码 `6667` / 115200，当前从机 `AT+TYPE0`）。
+> 相关工具：[`tools/fw_prep/bt_scan.py`](tools/fw_prep/bt_scan.py)（按**合法帧**识别端口）、
+> [`tools/fw_prep/bt_at.py`](tools/fw_prep/bt_at.py)（AT 配置，自动探波特率与方言）。
+> **因此演示与联调以有线链路（板上 MicroUSB/USART1）为主链路。**
 
 ---
 
@@ -157,9 +177,18 @@
 
 | 部分 | 怎么构建 / 打开 | 说明 |
 |---|---|---|
-| **固件** | `cd firmware && make`（默认带 FreeRTOS，产出 `build/MiniBalance.hex`）；`make USE_RTOS=0` 出裸机对照版；`make size` 看占用；`make strict` 严格告警自检 | **不用 Keil**（决策 34）：`arm-none-eabi-gcc` + Makefile。`make flash` 走 ST-Link |
+| **固件** | `cd firmware && make`（默认带 FreeRTOS，产出 `build/MiniBalance.hex`）；`make USE_RTOS=0` 出裸机对照版；`make size` 看占用；`make strict` 严格告警自检（**必须先 `make clean`**，否则增量编译下可能一条都不编、"0 条"是假绿） | **不用 Keil**（决策 34）：`arm-none-eabi-gcc` + Makefile。`make flash` 走 ST-Link；离线核验一键脚本 `python tools\fw_prep\run_all_tests.py`（**9 项**，GBK 控制台需 `set PYTHONIOENCODING=utf-8`）|
 | **上位机** | Qt 6.11.2 + CMake + Ninja，详见 `host/README.md` | |
 | **PCB 工程** | 嘉立创EDA 专业版（`…\LCEDA-Pro\projects\参考01_copy`）| 自动化核查脚本在 `tools/`（见 `tools/README.md`）|
+
+> **📌 固件调试开关**（都在 `firmware/App/Config/app_config.h`，联调只改这一个文件）：
+> `CFG_MOTOR_LEFT/RIGHT_INVERT`、`CFG_ENCODER_LEFT/RIGHT_INVERT`（**分侧、互不嵌套**）、
+> `CFG_DEBUG_DISABLE_VELOCITY`（**当前 = 1**，调试期先摘掉速度环）、`CFG_FW_BUILD_ID`（固件版本字节）。
+>
+> ⚠️ **踩过的坑（AGENTS 铁律 35）**：`control.c` 要用 `#if CFG_*`，就**必须能看到 `app_config.h`**
+> —— 否则预处理器按"未定义 = 0"处理，整段 `#if` 被静默跳过，**开关写什么值都无效且运行现象上看不出来**。
+> 改完开关**必须用预处理输出验证**（`gcc -E`，命令取自 `compile_commands.json`），
+> **不要**用"文件大小/哈希是否变化"判断（对齐会吸收 2~4 字节差异，给出假阴性）。
 
 ### 7.2 ★ 想"看代码 / 改代码"用什么
 

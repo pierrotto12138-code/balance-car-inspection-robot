@@ -60,6 +60,12 @@ quint64 VehicleState::frameCount(io::LinkKind kind) const
     return m_linkFrames[linkIndex(kind)];
 }
 
+qint64 VehicleState::linkAgeMs(io::LinkKind kind) const
+{
+    const qint64 t = m_linkLastMs[linkIndex(kind)];
+    return (t < 0) ? -1 : (nowMs() - t);
+}
+
 bool VehicleState::taskTickAlive(int index) const
 {
     if (index < 0 || index > 3) {
