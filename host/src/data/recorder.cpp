@@ -1,6 +1,7 @@
 #include "data/recorder.h"
 
 #include "codec.h"
+#include "domain/commands.h"
 #include "domain/frames.h"
 #include "domain/units.h"
 
@@ -20,6 +21,80 @@
 namespace data {
 
 namespace {
+
+/// 数据列数（前缀 5 列 + 36 数据列 + 1 HEX = 42 列；改这里同时改 headerRow()）
+constexpr int kDataCols = 36;
+
+/// 数据列下标（与 headerRow() 的顺序一一对应）
+enum DataCol {
+    TaskName = 0,
+    Phase,
+    Progress,
+    Checkpoint,
+    FaultFlags,
+    Pitch,
+    Roll,
+    Yaw,
+    GyroX,
+    LeftMmS,
+    RightMmS,
+    Pwm,
+    Dist,
+    Avoid,
+    Mq2,
+    Mq135,
+    Temp,
+    Hum,
+    Gear,
+    Volt,
+    Page,
+    Heap,
+    OledRate,
+    Bal,
+    Vel,
+    Turn,
+    Moto1,
+    Moto2,
+    CcrA,
+    CcrB,
+    EncL,
+    EncR,
+    FwVersion,
+    EventCode,
+    Content,
+    Note,
+};
+
+/// 表头（42 列，自描述：列名写清单位与口径，避免事后猜）
+QStringList headerRow()
+{
+    return QStringList{
+        QStringLiteral("本地时间ms"),     QStringLiteral("墙上时间"),    QStringLiteral("来源链路"),
+        QStringLiteral("命令"),          QStringLiteral("名称"),       QStringLiteral("任务"),
+        QStringLiteral("阶段"),          QStringLiteral("完成度%"),     QStringLiteral("巡检点"),
+        QStringLiteral("异常标志"),      QStringLiteral("俯仰deg"),     QStringLiteral("横滚deg"),
+        QStringLiteral("偏航deg"),       QStringLiteral("角速度Xdps"),  QStringLiteral("左轮速mmps"),
+        QStringLiteral("右轮速mmps"),    QStringLiteral("PWM%"),        QStringLiteral("超声cm"),
+        QStringLiteral("避障位"),        QStringLiteral("MQ2ppm"),      QStringLiteral("MQ135ppm"),
+        QStringLiteral("温度C"),         QStringLiteral("湿度%RH"),     QStringLiteral("采样档位"),
+        QStringLiteral("电压V"),         QStringLiteral("显示页"),      QStringLiteral("剩余堆KB"),
+        QStringLiteral("OLED写入速率Bps"), QStringLiteral("平衡环Bal"), QStringLiteral("速度环Vel"),
+        QStringLiteral("转向环Turn"),    QStringLiteral("左Moto"),      QStringLiteral("右Moto"),
+        QStringLiteral("CCR_A"),         QStringLiteral("CCR_B"),       QStringLiteral("编码器左"),
+        QStringLiteral("编码器右"),      QStringLiteral("固件版本"),    QStringLiteral("事件码"),
+        QStringLiteral("内容"),          QStringLiteral("备注"),        QStringLiteral("原始帧HEX")};
+}
+
+/// 空的 36 个数据列（每行只填自己那几列，其余留空 ⇒ 单文件覆盖所有帧型，Excel 直接透视）
+QStringList emptyDataCols()
+{
+    QStringList c;
+    c.reserve(kDataCols);
+    for (int i = 0; i < kDataCols; ++i) {
+        c << QString();
+    }
+    return c;
+}
 
 /// CSV 转义：字段里有逗号/引号/换行时用双引号包起来（Excel 与脚本都能正确解析）
 QString csvCell(const QString &s)
@@ -72,40 +147,36 @@ bool CsvRecorder::start(const QString &path)
     // ★ UTF-8 BOM：中文 Windows 的 Excel 没有 BOM 时会按 GBK 解析，表头变乱码
     m_file->write("\xEF\xBB\xBF");
 
-    // 自描述表头：列名写清单位与来源（协议 §七 的口径就写在这里，免得事后猜）
-    const QStringList header{
-        QStringLiteral("本地时间"),      QStringLiteral("墙上时间"), QStringLiteral("来源链路"),
-        QStringLiteral("命令"),          QStringLiteral("名称"),     QStringLiteral("任务"),
-        QStringLiteral("阶段"),          QStringLiteral("完成度%"),  QStringLiteral("巡检点"),
-        QStringLiteral("异常标志"),      QStringLiteral("俯仰deg"),  QStringLiteral("横滚deg"),
-        QStringLiteral("偏航deg"),       QStringLiteral("角速度Xdps"), QStringLiteral("左轮速mmps"),
-        QStringLiteral("右轮速mmps"),    QStringLiteral("PWM%"),     QStringLiteral("超声cm"),
-        QStringLiteral("避障位"),        QStringLiteral("MQ2ppm"),   QStringLiteral("MQ135ppm"),
-        QStringLiteral("温度C"),         QStringLiteral("湿度%RH"),  QStringLiteral("采样档位"),
-        QStringLiteral("电压V"),         QStringLiteral("显示页"),   QStringLiteral("剩余堆KB"),
-        QStringLiteral("OLED写入Bps"),   QStringLiteral("平衡环"),   QStringLiteral("速度环"),
-        QStringLiteral("转向环"),        QStringLiteral("左Moto"),   QStringLiteral("右Moto"),
-        QStringLiteral("CCR_A"),         QStringLiteral("CCR_B"),    QStringLiteral("编码器左"),
-        QStringLiteral("编码器右"),      QStringLiteral("固件版本"), QStringLiteral("事件码"),
-        QStringLiteral("内容"),          QStringLiteral("备注"),     QStringLiteral("原始帧HEX")};
-    *m_out << header.join(QLatin1Char(',')) << QLatin1Char('\n');
+    // 自描述表头（与 writeRow 用同一个列数常量，杜绝"表头与数据错位"）
+    *m_out << headerRow().join(QLatin1Char(',')) << QLatin1Char('\n');
     m_out->flush();
 
     emit started(path);
     return true;
 }
 
-void CsvRecorder::writeRow(const QString &cell0, const QString &cmdText, const QString &payloadCsv,
-                           const QByteArray &raw)
+void CsvRecorder::writeRow(const QString &linkText, const QString &cmdText, const QString &name,
+                           const QStringList &dataCols, const QByteArray &raw)
 {
     if (m_file == nullptr || m_out == nullptr) {
         return;
     }
-    // 固定 41 列（表头 41 个）：前 5 列 + 35 个数据列 + HEX
-    *m_out << csvCell(cell0) << ','
-           << QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")) << ','
-           << cmdText << ',' << payloadCsv << ',' << QString::fromLatin1(raw.toHex(' ').toUpper())
-           << QLatin1Char('\n');
+    QStringList cells;
+    cells.reserve(5 + kDataCols + 1);
+    cells << QString::number(QDateTime::currentMSecsSinceEpoch())
+          << QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"))
+          << linkText << cmdText << name;
+    for (int i = 0; i < kDataCols; ++i) {
+        cells << (i < dataCols.size() ? dataCols.at(i) : QString());
+    }
+    cells << QString::fromLatin1(raw.toHex(' ').toUpper());
+
+    QStringList escaped;
+    escaped.reserve(cells.size());
+    for (const QString &c : cells) {
+        escaped << csvCell(c);
+    }
+    *m_out << escaped.join(QLatin1Char(',')) << QLatin1Char('\n');
     ++m_rows;
     if ((m_rows % 50) == 0) {
         m_out->flush(); // 定期落盘：演示中途断电也只丢最后几十行
@@ -125,89 +196,85 @@ void CsvRecorder::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data)
 
     const QString link = QString::fromUtf8(io::linkName(kind));
     const QString cmdText = QStringLiteral("0x%1").arg(cmd, 2, 16, QLatin1Char('0')).toUpper();
-
-    // 每类帧只填自己那几列，其余留空 —— 单文件覆盖所有帧型，Excel 直接透视
-    QStringList cols;
-    cols.reserve(35);
-    for (int i = 0; i < 35; ++i) {
-        cols << QString();
-    }
     const QString name = QString::fromUtf8(domain::cmd::name(cmd));
+    QStringList cols = emptyDataCols();
 
     switch (cmd) {
     case proto::up::kPose: {
         domain::PoseData v;
         if (domain::decodePose(data, v)) {
-            cols[6] = num(v.pitchDeg, 2);
-            cols[7] = num(v.rollDeg, 2);
-            cols[8] = num(v.yawDeg, 2);
-            cols[9] = num(v.gyroXDps, 2);
+            cols[Pitch] = num(v.pitchDeg, 2);
+            cols[Roll] = num(v.rollDeg, 2);
+            cols[Yaw] = num(v.yawDeg, 2);
+            cols[GyroX] = num(v.gyroXDps, 2);
         }
         break;
     }
     case proto::up::kMotion: {
         domain::MotionData v;
         if (domain::decodeMotion(data, v)) {
-            cols[10] = QString::number(v.leftMmS);
-            cols[11] = QString::number(v.rightMmS);
-            cols[12] = num(v.pwmPercent, 1);
-            cols[13] = QString::number(v.distanceCm);
-            cols[14] = QStringLiteral("0b%1").arg(v.avoidFlags, 4, 2, QLatin1Char('0'));
+            cols[LeftMmS] = QString::number(v.leftMmS);
+            cols[RightMmS] = QString::number(v.rightMmS);
+            cols[Pwm] = num(v.pwmPercent, 1);
+            cols[Dist] = QString::number(v.distanceCm);
+            cols[Avoid] = QStringLiteral("0b%1").arg(v.avoidFlags, 4, 2, QLatin1Char('0'));
         }
         break;
     }
     case proto::up::kTask: {
         domain::TaskData v;
         if (domain::decodeTask(data, v)) {
-            cols[0] = QString::fromUtf8(domain::taskName(v.taskId));
-            cols[1] = QString::fromUtf8(domain::phaseName(v.phase));
-            cols[2] = QString::number(v.progressPct);
-            cols[3] = QString::number(v.checkpoint);
-            cols[4] = domain::faultFlagsText(v.faultFlags);
+            cols[TaskName] = QString::fromUtf8(domain::taskName(v.taskId));
+            cols[Phase] = QString::fromUtf8(domain::phaseName(v.phase));
+            cols[Progress] = QString::number(v.progressPct);
+            cols[Checkpoint] = QString::number(v.checkpoint);
+            cols[FaultFlags] = domain::faultFlagsText(v.faultFlags);
         }
         break;
     }
     case proto::up::kEnvGas: {
         domain::EnvData v;
         if (domain::decodeEnv(data, v)) {
-            cols[15] = num(v.mq2Ppm, 1);
-            cols[16] = num(v.mq135Ppm, 1);
-            cols[17] = num(v.tempC, 1);
-            cols[18] = num(v.humidityPct, 1);
-            cols[19] = QString::fromUtf8(domain::sampleGearName(v.gear));
+            cols[Mq2] = num(v.mq2Ppm, 1);
+            cols[Mq135] = num(v.mq135Ppm, 1);
+            cols[Temp] = num(v.tempC, 1);
+            cols[Hum] = num(v.humidityPct, 1);
+            cols[Gear] = QString::fromUtf8(domain::sampleGearName(v.gear));
         }
         break;
     }
     case proto::up::kDiag: {
         domain::DiagData v;
         if (domain::decodeDiag(data, v)) {
-            cols[20] = num(v.batteryV, 2);
-            cols[21] = QString::fromUtf8(domain::diagPageName(v.page));
-            cols[22] = QString::number(v.heapKb);
-            cols[23] = QString::number(v.oledBytes);
+            cols[Volt] = num(v.batteryV, 2);
+            cols[Page] = QString::fromUtf8(domain::diagPageName(v.page));
+            cols[Heap] = QString::number(v.heapKb);
+            cols[OledRate] = QString::number(v.oledBytes);
         }
         break;
     }
     case proto::up::kLoop: {
         domain::LoopData v;
         if (domain::decodeLoop(data, v)) {
-            cols[24] = QString::number(v.balancePwm);
-            cols[25] = QString::number(v.velocityPwm);
-            cols[26] = QString::number(v.turnPwm);
-            cols[27] = QString::number(v.moto1);
-            cols[28] = QString::number(v.moto2);
-            cols[29] = QString::number(v.ccrA);
-            cols[30] = QString::number(v.ccrB);
-            cols[31] = QString::number(v.encLeft);
-            cols[32] = QString::number(v.encRight);
-            cols[33] = domain::firmwareVersionText(v.fwVersion);
+            cols[Bal] = QString::number(v.balancePwm);
+            cols[Vel] = QString::number(v.velocityPwm);
+            cols[Turn] = QString::number(v.turnPwm);
+            cols[Moto1] = QString::number(v.moto1);
+            cols[Moto2] = QString::number(v.moto2);
+            cols[CcrA] = QString::number(v.ccrA);
+            cols[CcrB] = QString::number(v.ccrB);
+            cols[EncL] = QString::number(v.encLeft);
+            cols[EncR] = QString::number(v.encRight);
+            cols[FwVersion] = domain::firmwareVersionText(v.fwVersion);
         }
         break;
     }
     case proto::up::kEvent: {
         domain::EventData v;
         if (domain::decodeEvent(data, v)) {
-            cols[34] = QString::fromUtf8(domain::eventName(v.code));
+            cols[EventCode] = QStringLiteral("0x%1").arg(int(v.code), 2, 16, QLatin1Char('0')).toUpper();
+            cols[Content] = QString::fromUtf8(domain::eventName(v.code));
+            cols[Note] = QStringLiteral("机器人时间戳 %1 ms").arg(v.timestampMs);
         }
         break;
     }
@@ -215,58 +282,21 @@ void CsvRecorder::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data)
         break;
     }
 
-    QStringList row;
-    row.reserve(41);
-    row << QString::number(QDateTime::currentMSecsSinceEpoch()) << QString() // 墙上时间由 writeRow 填
-        << link << cmdText << name;
-    row << cols;
-    row << QString::fromLatin1(raw.toHex(' ').toUpper());
-    // writeRow 负责前两列（本地时间/墙上时间）与最后的 HEX，这里把中间 38 列拼好
-    QString payloadCsv;
-    for (int i = 0; i < cols.size(); ++i) {
-        if (!cols.at(i).isEmpty()) {
-            payloadCsv += csvCell(cols.at(i));
-        }
-        payloadCsv += QLatin1Char(',');
-    }
-    // 直接把整行写出去（保持列数一致：5 前缀列 + 35 数据列 + 1 HEX = 41）
-    if (m_file != nullptr && m_out != nullptr) {
-        *m_out << csvCell(QString::number(QDateTime::currentMSecsSinceEpoch())) << ','
-               << QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"))
-               << ',' << csvCell(link) << ',' << cmdText << ',' << csvCell(name) << ','
-               << payloadCsv << QString::fromLatin1(raw.toHex(' ').toUpper()) << QLatin1Char('\n');
-        ++m_rows;
-        if ((m_rows % 50) == 0) {
-            m_out->flush();
-        }
-    }
+    writeRow(link, cmdText, name, cols, raw);
 }
 
 void CsvRecorder::onEvent(const data::EventEntry &e)
 {
-    if (!isRecording() || m_out == nullptr) {
+    if (!isRecording()) {
         return;
     }
-    // 事件/告警/操作员动作：与帧同轴，额外多两列（内容、备注）
-    QStringList cols;
-    for (int i = 0; i < 35; ++i) {
-        cols << QString();
-    }
-    cols[33] = e.local ? QStringLiteral("本机") : QString();
-    cols[34] = QStringLiteral("0x%1").arg(e.code, 2, 16, QLatin1Char('0')).toUpper();
-    QString payloadCsv;
-    for (const QString &c : cols) {
-        if (!c.isEmpty()) {
-            payloadCsv += csvCell(c);
-        }
-        payloadCsv += QLatin1Char(',');
-    }
-    *m_out << csvCell(QString::number(QDateTime::currentMSecsSinceEpoch())) << ','
-           << e.wall.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")) << ','
-           << csvCell(e.local ? QStringLiteral("本机") : QString::fromUtf8(io::linkName(e.kind))) << ','
-           << QStringLiteral("事件") << ',' << csvCell(e.title) << ',' << payloadCsv
-           << csvCell(e.detail) << QLatin1Char('\n');
-    ++m_rows;
+    QStringList cols = emptyDataCols();
+    cols[EventCode] = e.local ? QStringLiteral("本机")
+                              : QStringLiteral("0x%1").arg(e.code, 2, 16, QLatin1Char('0')).toUpper();
+    cols[Content] = e.title;
+    cols[Note] = e.detail;
+    writeRow(e.local ? QStringLiteral("本机") : QString::fromUtf8(io::linkName(e.kind)),
+             e.local ? QStringLiteral("事件/本机") : QStringLiteral("事件"), e.title, cols, QByteArray());
     m_out->flush(); // 事件不常有，逐条刷盘
 }
 
@@ -483,9 +513,11 @@ int SessionStore::paramCount() const
         return -1;
     }
     QSqlDatabase db = QSqlDatabase::database(m_connection, false);
-    QSqlQuery q(qdb_placeholder_guard());
-    Q_UNUSED(q);
-    return -1;
+    QSqlQuery q(db);
+    if (!q.exec(QStringLiteral("SELECT COUNT(*) FROM params")) || !q.next()) {
+        return -1;
+    }
+    return q.value(0).toInt();
 }
 
 } // namespace data

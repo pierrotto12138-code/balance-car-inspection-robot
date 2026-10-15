@@ -9,6 +9,8 @@
 
 #include "codec.h" // 事件码常量（自检里识别 0x13）
 #include "data/event_log.h"
+#include "data/param_store.h"
+#include "data/recorder.h"
 #include "domain/alarm.h"
 #include "domain/commands.h"
 #include "domain/keepalive.h"
@@ -17,6 +19,8 @@
 #include "io/link_manager.h"
 #include "ui/mainwindow.h"
 #include "ui/theme/theme.h"
+
+#include <QStandardPaths>
 
 // ============================================================================
 //  程序入口：只做"装配"这一件事
@@ -473,6 +477,15 @@ int main(int argc, char *argv[])
                             QStringLiteral("假源速率倍数（1.0 = 按协议真实周期；5 = 五倍速演示）"),
                             QStringLiteral("倍数"), QStringLiteral("1.0"));
     parser.addOption(rate);
+    // 记录与回放（P4）：记录让"现场发生的事"可复盘；回放让"没有硬件也能演示"
+    QCommandLineOption record(QStringLiteral("record"),
+                              QStringLiteral("启动即开始录制（CSV 逐帧 + 会话入库）"),
+                              QStringLiteral("CSV路径"));
+    parser.addOption(record);
+    QCommandLineOption play(QStringLiteral("play"),
+                            QStringLiteral("用记录文件回放驱动界面（走假源链路，同一套数据通路）"),
+                            QStringLiteral("CSV路径"));
+    parser.addOption(play);
     // 真机只读探测（不需要界面，用来在联调第一现场把"链路/命令覆盖/状态"一次打全）
     QCommandLineOption probe(QStringLiteral("probe"),
                              QStringLiteral("真机只读探测：打开指定串口，打印链路统计、各命令字"
@@ -504,6 +517,17 @@ int main(int argc, char *argv[])
     domain::AlarmEngine alarm;
     domain::KeepaliveEngine keepalive;
     data::EventLog log;
+    data::ParamStore params;
+    data::CsvRecorder recorder;
+    data::SessionStore store;
+
+    // 会话库放在标准路径下（不写死绝对路径：打包换机后仍然可用，计划 §2.2 的打包坑）
+    const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (!store.open(appData + QStringLiteral("/sessions.db"))) {
+        // SQLite 不可用不影响主流程（逐帧 CSV 仍可用）——但要在控制台留痕，别静默降级
+        QTextStream(stdout) << QStringLiteral("提示：会话库不可用（%1）—— 逐帧 CSV 不受影响\n")
+                                   .arg(store.lastError());
+    }
 
     // ① io → domain/data：跨线程用队列连接传值类型（解析在工作线程完成，见 io/serial_link.h）
     QObject::connect(&manager, &io::LinkManager::frameReady, &state, &domain::VehicleState::onFrame);
@@ -515,13 +539,28 @@ int main(int argc, char *argv[])
     QObject::connect(&alarm, &domain::AlarmEngine::alarmRaised, &log, &data::EventLog::onAlarmRaised);
     QObject::connect(&alarm, &domain::AlarmEngine::alarmCleared, &log,
                      &data::EventLog::onAlarmCleared);
-    // ④ 随时间变化的告警规则（失联、锁存）用 10 Hz 固定节拍评估
+    // ④ 记录与落盘（P4）：逐帧 CSV ← frameReady；事件/告警/操作员动作 ← 事件流；参数 ← 账本
+    QObject::connect(&manager, &io::LinkManager::frameReady, &recorder, &data::CsvRecorder::onFrame);
+    QObject::connect(&log, &data::EventLog::entryAdded, &recorder, &data::CsvRecorder::onEvent);
+    QObject::connect(&log, &data::EventLog::entryAdded, &store, [&store](const data::EventEntry &e) {
+        if (store.isAvailable()) {
+            store.addEvent(e);
+        }
+    });
+    QObject::connect(&params, &data::ParamStore::historyAppended, &store,
+                     [&store](const data::ParamSnapshot &s) {
+                         if (store.isAvailable()) {
+                             store.addParam(QDateTime::currentMSecsSinceEpoch(), s.id, s.value,
+                                            s.source);
+                         }
+                     });
+    // ⑤ 随时间变化的告警规则（失联、锁存）用 10 Hz 固定节拍评估
     QTimer alarmTick;
     alarmTick.setInterval(100);
     QObject::connect(&alarmTick, &QTimer::timeout, &alarm, [&state, &alarm]() { alarm.tick(state); });
     alarmTick.start();
 
-    // ⑤ 保活：把"发送"接到真实链路上（默认心跳 0x1F，不解除锁存），
+    // ⑥ 保活：把"发送"接到真实链路上（默认心跳 0x1F，不解除锁存），
     //    并跟踪"是否有链路可用"——链路没开时它不发（不会假装在保活）
     keepalive.setSink([&manager](quint8 cmd, const QByteArray &data) {
         return manager.send(cmd, data);
@@ -537,11 +576,27 @@ int main(int argc, char *argv[])
         manager.setMode(io::LinkKind::Bluetooth, io::LinkManager::Mode::Replay);
         manager.setReplayRate(parser.value(rate).toDouble());
     }
+    if (parser.isSet(play)) {
+        // 用记录文件驱动整个界面（现场硬件故障时的应急预案）
+        manager.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
+        const int n = manager.loadCapture(io::LinkKind::Wire, parser.value(play));
+        QTextStream(stdout) << QStringLiteral("回放：%1（%2 帧）\n").arg(parser.value(play)).arg(n);
+    }
 
-    MainWindow w(&manager, &state, &alarm, &keepalive, &log);
+    MainWindow w(&manager, &state, &alarm, &keepalive, &log, &params, &recorder, &store);
     w.show();
-    if (parser.isSet(demo)) {
+    if (parser.isSet(demo) || parser.isSet(play)) {
         manager.openAll(); // 窗口显示后再开链路，界面上能直接看到状态变化
+    }
+    if (parser.isSet(record)) {
+        if (!recorder.start(parser.value(record))) {
+            QTextStream(stdout) << QStringLiteral("✘ 录制未能开始：%1\n").arg(recorder.lastError());
+        } else {
+            if (store.isAvailable()) {
+                store.beginSession(QStringLiteral("命令行 --record 会话"), parser.value(record));
+            }
+            QTextStream(stdout) << QStringLiteral("⏺ 录制中：%1\n").arg(parser.value(record));
+        }
     }
     if (parser.isSet(shot)) {
         w.showPage(parser.value(shotTab).toInt());

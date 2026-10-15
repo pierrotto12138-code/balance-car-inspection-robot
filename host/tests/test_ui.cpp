@@ -17,6 +17,8 @@
 
 #include "codec.h"
 #include "data/event_log.h"
+#include "data/param_store.h"
+#include "data/recorder.h"
 #include "domain/alarm.h"
 #include "domain/keepalive.h"
 #include "domain/vehicle_state.h"
@@ -26,9 +28,11 @@
 #include "ui/panels/event_panel.h"
 #include "ui/panels/overview_panel.h"
 #include "ui/panels/patrol_panel.h"
+#include "ui/panels/tune_panel.h"
 #include "ui/widgets/scope_plot.h"
 #include "ui/widgets/value_card.h"
 
+#include <QDoubleSpinBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QTableWidget>
@@ -230,7 +234,10 @@ private slots:
         AlarmEngine alarm;
         KeepaliveEngine keepalive;
         data::EventLog log;
-        MainWindow w(&mgr, &st, &alarm, &keepalive, &log);
+        data::ParamStore params;
+        data::CsvRecorder recorder;
+        data::SessionStore store;
+        MainWindow w(&mgr, &st, &alarm, &keepalive, &log, &params, &recorder, &store);
         w.resize(1400, 900);
         w.show();
         QTest::qWait(50);
@@ -238,8 +245,9 @@ private slots:
         QCOMPARE(w.pageTitle(0), QStringLiteral("① 总览"));
         QCOMPARE(w.pageTitle(1), QStringLiteral("② 巡检与控制"));
         QCOMPARE(w.pageTitle(2), QStringLiteral("③ 曲线与告警"));
-        QCOMPARE(w.pageTitle(3), QStringLiteral("④ 事件流"));
-        for (int i = 0; i < 6; ++i) {
+        QCOMPARE(w.pageTitle(3), QStringLiteral("④ 调参与记录"));
+        QCOMPARE(w.pageTitle(4), QStringLiteral("⑤ 事件流"));
+        for (int i = 0; i < 7; ++i) {
             w.showPage(i);
             QTest::qWait(30);
             QCOMPARE(w.currentPage(), i);
@@ -249,6 +257,58 @@ private slots:
         w.showPage(2);
         QTest::qWait(120);
         QVERIFY(w.isVisible());
+    }
+
+    // ---------------------------------------------------------------- P4：调参页
+    void tunePanel_blocksOutOfRangeAndLogsReadback()
+    {
+        io::LinkManager mgr;
+        mgr.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
+        mgr.open(io::LinkKind::Wire);
+        QTest::qWait(30);
+        VehicleState st;
+        data::ParamStore params;
+        data::EventLog log;
+        TunePanel panel(&st, &mgr, &params, &log);
+        panel.resize(1200, 800);
+        panel.show();
+        QTest::qWait(30);
+
+        auto *table = panel.findChild<QTableWidget *>();
+        QVERIFY(table != nullptr);
+        QCOMPARE(table->rowCount(), 7); // 7 个 PID 参数
+
+        // 选中 Turn_Kp 那一行 → 输入框应被限制在该参数的范围内（从源头堵住越界）
+        int row = -1;
+        for (int r = 0; r < table->rowCount(); ++r) {
+            if (table->item(r, 1) != nullptr && table->item(r, 1)->text().contains(QStringLiteral("转向环 P"))) {
+                row = r;
+            }
+        }
+        QVERIFY(row >= 0);
+        table->selectRow(row);
+        QTest::qWait(20);
+        auto *edit = panel.findChild<QDoubleSpinBox *>();
+        QVERIFY(edit != nullptr);
+        QCOMPARE(edit->maximum(), 500.0);
+
+        // 回读路径：喂一条 0x24 回显（与下发值一致）→ 表格"数据来源"变成已回读
+        params.noteRequest(0x06, 40.0);
+        std::vector<uint8_t> d;
+        d.push_back(0x06);
+        d.push_back(0x00);
+        const float v = 40.0f;
+        const auto *p = reinterpret_cast<const uint8_t *>(&v);
+        d.insert(d.end(), p, p + 4);
+        const QByteArray payload(reinterpret_cast<const char *>(d.data()), int(d.size()));
+        st.onFrame(io::LinkKind::Wire, proto::down::kPidTune, payload);
+        panel.onDataUpdated(proto::down::kPidTune);
+        QVERIFY(params.readbackReceived(0x06));
+        QVERIFY(params.lastRequestConfirmed(0x06));
+        QTest::qWait(120); // 让 10 Hz 定时器刷一次表
+        QVERIFY(table->item(row, 3) != nullptr);
+        QCOMPARE(table->item(row, 3)->text(), QStringLiteral("40.0000"));
+        mgr.close(io::LinkKind::Wire);
     }
 
     // ---------------------------------------------------------------- P3：巡检与控制

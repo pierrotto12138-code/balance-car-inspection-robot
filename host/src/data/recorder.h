@@ -60,8 +60,12 @@ signals:
     void writeFailed(const QString &why);
 
 private:
-    void writeRow(const QString &cell0, const QString &cmdText, const QString &payloadCsv,
-                  const QByteArray &raw);
+    /// 写一行：前缀 5 列（本地时间/墙上时间/来源链路/命令/名称）+ 数据列 + HEX
+    ///
+    /// ★ 列数与 `headerRow()` **同源**（都由 `kDataCols` 决定）：逐帧与逐事件走同一个
+    ///   写入口，避免"表头 42 列、数据 41 列"这种 Excel 里才会暴露的错位。
+    void writeRow(const QString &linkText, const QString &cmdText, const QString &name,
+                  const QStringList &dataCols, const QByteArray &raw);
 
     QFile *m_file = nullptr;
     QTextStream *m_out = nullptr;

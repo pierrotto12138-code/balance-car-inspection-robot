@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 
 #include "data/event_log.h"
+#include "data/param_store.h"
+#include "data/recorder.h"
 #include "domain/alarm.h"
 #include "domain/keepalive.h"
 #include "domain/units.h"
@@ -9,6 +11,7 @@
 #include "ui/panels/event_panel.h"
 #include "ui/panels/overview_panel.h"
 #include "ui/panels/patrol_panel.h"
+#include "ui/panels/tune_panel.h"
 #include "ui/p0panel.h"
 #include "ui/theme/theme.h"
 
@@ -17,6 +20,7 @@
 #include <QClipboard>
 #include <QDateTime>
 #include <QDir>
+#include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
@@ -46,12 +50,14 @@ QLabel *statusLabel()
 } // namespace
 
 MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain::AlarmEngine *alarm,
-                       domain::KeepaliveEngine *keepalive, data::EventLog *log, QWidget *parent)
+                       domain::KeepaliveEngine *keepalive, data::EventLog *log,
+                       data::ParamStore *params, data::CsvRecorder *recorder, data::SessionStore *store,
+                       QWidget *parent)
     : QMainWindow(parent), m_mgr(mgr), m_state(state), m_alarm(alarm), m_keepalive(keepalive),
-      m_log(log)
+      m_log(log), m_params(params), m_recorder(recorder), m_store(store)
 {
     setWindowTitle(QStringLiteral("仓储环境安全巡检机器人 · 上位机"));
-    resize(1500, 940);
+    resize(1560, 960);
 
     // ---------------- 左侧导航 + 中央堆叠 ----------------
     auto *central = new QWidget(this);
@@ -65,19 +71,22 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain
     m_nav->addItem(QStringLiteral("① 总览"));
     m_nav->addItem(QStringLiteral("② 巡检与控制"));
     m_nav->addItem(QStringLiteral("③ 曲线与告警"));
-    m_nav->addItem(QStringLiteral("④ 事件流"));
-    m_nav->addItem(QStringLiteral("⑤ 通信链路"));
-    m_nav->addItem(QStringLiteral("⑥ 协议自检"));
+    m_nav->addItem(QStringLiteral("④ 调参与记录"));
+    m_nav->addItem(QStringLiteral("⑤ 事件流"));
+    m_nav->addItem(QStringLiteral("⑥ 通信链路"));
+    m_nav->addItem(QStringLiteral("⑦ 协议自检"));
 
     m_stack = new QStackedWidget(central);
     m_overview = new OverviewPanel(m_state, m_mgr, m_alarm, m_stack);
     m_patrol = new PatrolPanel(m_state, m_mgr, m_alarm, m_keepalive, m_log, m_stack);
     m_curves = new CurvePanel(m_state, m_mgr, m_alarm, m_stack);
+    m_tune = new TunePanel(m_state, m_mgr, m_params, m_log, m_stack);
     m_events = new EventPanel(m_log, m_stack);
     m_p0 = new P0Panel(m_mgr, m_stack);
     m_stack->addWidget(m_overview);
     m_stack->addWidget(m_patrol);
     m_stack->addWidget(m_curves);
+    m_stack->addWidget(m_tune);
     m_stack->addWidget(m_events);
     m_stack->addWidget(m_p0);
     m_stack->addWidget(buildSelfTestPage());
@@ -89,9 +98,10 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain
     connect(m_nav, &QListWidget::currentRowChanged, m_stack, &QStackedWidget::setCurrentIndex);
     m_nav->setCurrentRow(0);
 
-    // ---- 界面内部连线：数据到了 → 曲线采样；告警 → 曲线标记 ----
+    // ---- 界面内部连线：数据到了 → 曲线采样/参数回读；告警 → 曲线标记 ----
     // （跨层装配在 main.cpp；这里只连"界面自己的面板"）
     connect(m_state, &domain::VehicleState::dataUpdated, m_curves, &CurvePanel::onDataUpdated);
+    connect(m_state, &domain::VehicleState::dataUpdated, m_tune, &TunePanel::onDataUpdated);
     connect(m_alarm, &domain::AlarmEngine::alarmRaised, m_curves, &CurvePanel::onAlarmRaised);
     connect(m_alarm, &domain::AlarmEngine::alarmCleared, m_curves, &CurvePanel::onAlarmCleared);
 
@@ -136,6 +146,7 @@ void MainWindow::buildStatusBar()
     m_stSafety = statusLabel();
     m_stAlarm = statusLabel();
     m_stKeepalive = statusLabel();
+    m_stRecord = statusLabel();
     m_stFrames = statusLabel();
     // 假源水印放在最左边：**演示数据必须一眼可辨**（计划 §11.2 第 10 条）
     statusBar()->addWidget(m_stDemo);
@@ -145,6 +156,7 @@ void MainWindow::buildStatusBar()
     statusBar()->addPermanentWidget(m_stAlarm);
     statusBar()->addPermanentWidget(m_stSafety);
     statusBar()->addPermanentWidget(m_stKeepalive);
+    statusBar()->addPermanentWidget(m_stRecord);
     statusBar()->addPermanentWidget(m_stFrames);
 }
 
@@ -170,6 +182,32 @@ QString MainWindow::pageTitle(int index) const
 
 void MainWindow::buildMenus()
 {
+    // ---------------- 文件：记录与回放 ----------------
+    auto *fileMenu = menuBar()->addMenu(QStringLiteral("文件(&F)"));
+    auto *rec = fileMenu->addAction(QStringLiteral("开始录制（CSV 逐帧 + 会话入库）…"));
+    rec->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+    connect(rec, &QAction::triggered, this, [this]() {
+        const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                            + QStringLiteral("/records");
+        QDir().mkpath(dir);
+        const QString suggested =
+            dir + QStringLiteral("/巡检记录_%1.csv")
+                      .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+        const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("开始录制"), suggested,
+                                                         QStringLiteral("CSV (*.csv)"));
+        if (!path.isEmpty()) {
+            startRecording(path);
+        }
+    });
+    auto *stopRec = fileMenu->addAction(QStringLiteral("停止录制"));
+    stopRec->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
+    connect(stopRec, &QAction::triggered, this, &MainWindow::stopRecording);
+    fileMenu->addSeparator();
+    auto *play = fileMenu->addAction(QStringLiteral("打开记录文件回放（无硬件驱动界面）…"));
+    connect(play, &QAction::triggered, this, &MainWindow::openReplayDialog);
+    fileMenu->addSeparator();
+    fileMenu->addAction(QStringLiteral("退出"), this, &QWidget::close);
+
     auto *viewMenu = menuBar()->addMenu(QStringLiteral("视图(&V)"));
     for (int i = 0; i < m_stack->count(); ++i) {
         const QString title = pageTitle(i);
@@ -206,10 +244,72 @@ void MainWindow::buildMenus()
 
     auto *helpMenu = menuBar()->addMenu(QStringLiteral("帮助(&H)"));
     helpMenu->addAction(QStringLiteral("关于本版本"), this, [this]() {
-        statusBar()->showMessage(QStringLiteral("P2：曲线与告警（四张通道独立曲线 + 阈值线 + 告警标记 + "
-                                                "事件流）；协议 v1.2；没有板子时用 --demo 跑假源"),
+        statusBar()->showMessage(QStringLiteral("P4：调参与记录（0x24 全流程 + Flash + 观测模式 + "
+                                                "三环曲线 + CSV/SQLite + 回放）；协议 v1.2；"
+                                                "没有板子时用 --demo 跑假源"),
                                  8000);
     });
+}
+
+void MainWindow::startRecording(const QString &path)
+{
+    if (m_recorder == nullptr) {
+        return;
+    }
+    if (!m_recorder->start(path)) {
+        statusBar()->showMessage(QStringLiteral("✘ 录制未能开始：%1").arg(m_recorder->lastError()), 8000);
+        return;
+    }
+    // 会话入库（SQLite 不可用时只是不记会话，逐帧 CSV 照常）
+    if (m_store != nullptr && m_store->isAvailable()) {
+        m_store->beginSession(QStringLiteral("上位机会话"), path);
+    }
+    statusBar()->showMessage(QStringLiteral("⏺ 录制中：%1（%2）")
+                                 .arg(path, m_store != nullptr && m_store->isAvailable()
+                                                ? QStringLiteral("会话已入库")
+                                                : QStringLiteral("会话库不可用，仅 CSV")),
+                             6000);
+}
+
+void MainWindow::stopRecording()
+{
+    if (m_recorder == nullptr || !m_recorder->isRecording()) {
+        return;
+    }
+    m_recorder->stop();
+    if (m_store != nullptr && m_store->isAvailable()) {
+        m_store->endSession();
+    }
+    statusBar()->showMessage(QStringLiteral("⏹ 录制已停止：%1（%2 行）")
+                                 .arg(m_recorder->path())
+                                 .arg(m_recorder->rowsWritten()),
+                             8000);
+}
+
+void MainWindow::openReplayDialog()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                        + QStringLiteral("/records");
+    const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("打开记录文件回放"), dir,
+                                                      QStringLiteral("CSV (*.csv)"));
+    if (path.isEmpty()) {
+        return;
+    }
+    // 回放走**假源链路**（同一条数据通路）：关掉真实链路 → 切 Replay → 载入记录
+    m_mgr->closeAll();
+    m_mgr->setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
+    const int n = m_mgr->loadCapture(io::LinkKind::Wire, path);
+    if (n <= 0) {
+        statusBar()->showMessage(QStringLiteral("✘ 记录文件里没有可用帧：%1").arg(path), 8000);
+        return;
+    }
+    m_mgr->open(io::LinkKind::Wire);
+    showPage(0);
+    statusBar()->showMessage(QStringLiteral("▶ 回放中：%1（%2 帧，循环播放；"
+                                            "切到「通信链路」页把实现方式改回真实串口即可退出回放）")
+                                 .arg(path)
+                                 .arg(n),
+                             12000);
 }
 
 void MainWindow::quickScreenshot()
@@ -299,6 +399,19 @@ void MainWindow::refreshStatusBar()
                                                               : sev == domain::Severity::Warn ? theme::kWarn
                                                               : sev == domain::Severity::Ok   ? theme::kOk
                                                                                              : theme::kOffline)));
+
+    // ---- 录制状态：现场最怕"以为在录、其实没录"，所以常显 ----
+    if (m_recorder != nullptr) {
+        const bool rec = m_recorder->isRecording();
+        m_stRecord->setText(rec ? QStringLiteral("⏺ 录制 %1 行").arg(m_recorder->rowsWritten())
+                                : QStringLiteral("未录制"));
+        m_stRecord->setStyleSheet(QStringLiteral("color:%1;")
+                                      .arg(QString::fromLatin1(rec ? theme::kAlarm
+                                                                   : theme::kOffline)));
+        m_stRecord->setToolTip(rec ? m_recorder->path()
+                                   : QStringLiteral("文件菜单 → 开始录制（CSV 逐帧 + 会话入库）；"
+                                                    "Ctrl+R 快捷键"));
+    }
 
     m_stFrames->setText(QStringLiteral("事件 %1 · 格式错帧 %2")
                             .arg(m_log->size())

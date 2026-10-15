@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 # 自研代码的告警纪律与固件一致：见的错误尽量在编译期暴露
 add_compile_options(-Wall -Wextra)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets SerialPort)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets SerialPort Sql)
 
 # ---------------------------------------------------------------- 协议层
 # 纯逻辑，不依赖 Qt、不依赖 GUI，可独立单元测试。
@@ -66,13 +66,17 @@ target_compile_definitions(qcustomplot PUBLIC QT_NO_PRINTER)
 target_compile_options(qcustomplot PRIVATE -w)
 
 # ---------------------------------------------------------------- 数据层（P2 起）
-# 事件流/会话/记录：只依赖 Qt6::Core（不依赖界面），因此可脱离界面单测。
+# 事件流/会话/记录/参数账本：只依赖 Qt6::Core 与 Qt6::Sql（不依赖界面），因此可脱离界面单测。
 add_library(hostdata STATIC
     src/data/event_log.cpp
     src/data/event_log.h
+    src/data/recorder.cpp
+    src/data/recorder.h
+    src/data/param_store.cpp
+    src/data/param_store.h
 )
 target_include_directories(hostdata PUBLIC src)
-target_link_libraries(hostdata PUBLIC domain Qt6::Core)
+target_link_libraries(hostdata PUBLIC domain Qt6::Core Qt6::Sql)
 
 # ---------------------------------------------------------------- 界面层（P1）
 # 做成**静态库**而不是直接编进 exe：这样界面可以被"无显示器"的冒烟测试直接驱动
@@ -90,6 +94,8 @@ add_library(hostui STATIC
     src/ui/panels/event_panel.h
     src/ui/panels/patrol_panel.cpp
     src/ui/panels/patrol_panel.h
+    src/ui/panels/tune_panel.cpp
+    src/ui/panels/tune_panel.h
     src/ui/widgets/value_card.cpp
     src/ui/widgets/value_card.h
     src/ui/widgets/led_indicator.cpp
@@ -141,6 +147,11 @@ if(Qt6Test_FOUND)
     add_executable(test_command tests/test_command.cpp)
     target_link_libraries(test_command PRIVATE domain hostdata hostio Qt6::Test)
     add_test(NAME command COMMAND test_command)
+
+    # P4：记录/回放/SQLite 会话/参数账本测试（纯逻辑，不需要硬件与界面）
+    add_executable(test_data tests/test_data.cpp)
+    target_link_libraries(test_data PRIVATE domain hostdata hostio Qt6::Test)
+    add_test(NAME data COMMAND test_data)
 else()
     message(STATUS "Qt6::Test 未找到，跳过单元测试目标")
 endif()
