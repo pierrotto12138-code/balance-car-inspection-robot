@@ -148,9 +148,15 @@ void SerialLink::Reader::run()
 
             // 2) 读（10 ms 超时：既能让上面的发送及时出去，又不空转烧 CPU）
             if (!port.waitForReadyRead(10)) {
-                if (port.error() != QSerialPort::NoError &&
-                    port.error() != QSerialPort::TimeoutError) {
-                    err = QStringLiteral("读取错误：%1").arg(port.errorString());
+                const QSerialPort::SerialPortError e = port.error();
+                if (e != QSerialPort::NoError && e != QSerialPort::TimeoutError) {
+                    // ★ 把"设备被拔掉/复位重枚举"与一般读错误分开报：
+                    //   两者的现场处置完全不同（前者去看线/供电，后者去看驱动/占用），
+                    //   而 QSerialPort 给的原文（"拒绝访问。"）根本看不出是哪种。
+                    err = (e == QSerialPort::ResourceError)
+                              ? QStringLiteral("串口在运行中断开（设备被拔掉或复位重枚举）：%1")
+                                    .arg(port.errorString())
+                              : QStringLiteral("读取错误：%1").arg(port.errorString());
                     break;
                 }
                 continue;
@@ -301,14 +307,18 @@ void SerialLink::stopReader()
     if (m_reader != nullptr) {
         m_reader->requestStop(); // 原子标志：读循环在 ≤10 ms 内退出
     }
-    // ★ 直接调 quit()：QThread::quit() 是线程安全的，可以跨线程调用。
-    //   这里**不能**只依赖 `Reader::finished → QThread::quit` 那条信号连接 ——
-    //   它是 AutoConnection：Reader 在工作线程、QThread 对象的归属线程是主线程，
-    //   于是 quit 会被**排队**到主线程的事件循环里执行。如果调用 close() 时主线程
-    //   并不在跑事件循环（命令行工具、程序退出路径就是这种情形），这条排队信号
-    //   永远不被投递 → wait(3000) 必然超时 → **关一次串口界面冻 3 秒**，
-    //   而且 thread/reader 引用被放弃（泄漏）。
-    //   这个坑是 2026-10-15 用 `--probe` 打真机时，从"状态年龄总是 ~3000 ms"反推出来的。
+    // ★ 退出路径要"显式 + 有界"，不要依赖排队信号：
+    //   `Reader::finished → QThread::quit` 这条 AutoConnection 里，Reader 在工作线程、
+    //   QThread 对象归主线程 → quit 是**排队**投递的；而 run() 里是阻塞读循环、本就不转
+    //   事件循环，一旦调用 close() 时主线程也不在跑事件循环（命令行工具、程序退出路径
+    //   都是这种情形），这条信号就得不到及时处理。所以这里主动 quit()（线程安全），
+    //   并把等待时间收成 2 s、超时留痕（qWarning），避免"悄悄泄漏线程/串口句柄"。
+    //
+    //   📌 顺带记一条**误判的教训**（2026-10-15，真机 `--probe`）：
+    //   一开始看到"结束时最近帧年龄恒为 ~3000 ms"，我把它当成"关闭链路阻塞 3 秒"；
+    //   加了两个数（实测时长 / 关闭耗时）之后才看清 —— 关闭只花 0~9 ms，真正的现象是
+    //   **串口在运行中消失了**（设备被拔掉/重枚举 → 读取错误 → 读循环退出 → 数据停）。
+    //   结论：**"数据停了"要先看链路状态与错误文本，不要先怀疑收尾代码。**
     m_thread->quit();
     if (!m_thread->wait(2000)) {
         // 极端情况（驱动卡死）：不强杀线程，仅放弃引用，避免崩溃 —— 但要让它在日志里可见

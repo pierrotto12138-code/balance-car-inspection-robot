@@ -97,7 +97,10 @@ int EXTI15_10_IRQHandler(void)
 				g_pwmApplied = 0;                      /* ★ 每拍先清，只有真调了 Set_Pwm 才置 1 */
 			Balance_Pwm =balance(Angle_Balance,Gyro_Balance);                   //===平衡PID控制
 		Velocity_Pwm=velocity(Encoder_Left,Encoder_Right);                  //===速度环PID控制	 记住，速度反馈是正反馈，就是小车快的时候要慢下来就需要再跑快一点
-			Turn_Pwm    =turn(Encoder_Left,Encoder_Right,Gyro_Turn);          	//===转向环PID控制
+			Turn_Pwm    =turn(Encoder_Left,Encoder_Right,Gyro_Turn);
+#if CFG_TURN_INVERT
+			Turn_Pwm = -Turn_Pwm;   /* ★ 单独翻转向环极性（见 app_config.h 的 CFG_TURN_INVERT）*/
+#endif          	//===转向环PID控制
 			Moto1=Balance_Pwm+Velocity_Pwm-Turn_Pwm;                            //===计算左轮电机最终PWM
 			Moto2=Balance_Pwm+Velocity_Pwm+Turn_Pwm;                            //===计算右轮电机最终PWM
 			Xianfu_Pwm();                                                       //===PWM限幅

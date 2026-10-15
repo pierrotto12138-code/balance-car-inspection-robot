@@ -96,8 +96,8 @@ static const ParamRange s_range[] = {
 	{ PARAM_VELOCITY_KP,   0.0f,   500.0f },
 	{ PARAM_VELOCITY_KI,   0.0f,     0.82f },
 	{ PARAM_ZHONGZHI,    -20.0f,    20.0f },
-	{ PARAM_TURN_KP,       0.0f,   500.0f },
-	{ PARAM_TURN_KD,       0.0f,    10.0f },
+	{ PARAM_TURN_KP,    -500.0f,   500.0f },
+	{ PARAM_TURN_KD,     -10.0f,    10.0f },
 };
 
 int ParamStore_SetOne(uint8_t id, float value)
