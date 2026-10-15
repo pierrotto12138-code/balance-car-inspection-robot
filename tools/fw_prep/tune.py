@@ -254,7 +254,20 @@ def open_port(port, baud, timeout=0.05):
               "    python -m pip install pyserial")
         raise SystemExit(2)
     import serial
-    ser = serial.Serial(port, baud, timeout=timeout)
+    # ★ 2026-10-13：Windows 在关闭句柄后有**短暂的释放延迟**，紧接着再打开同一个口
+    #    会抛 PermissionError(13)。真机联调时连续调用工具会被这个卡住，故加重试退避。
+    last = None
+    for _try in range(12):
+        try:
+            ser = serial.Serial(port, baud, timeout=timeout)
+            last = None
+            break
+        except Exception as e:                      # PermissionError / SerialException
+            last = e
+            time.sleep(0.3)
+    if last is not None:
+        print(f"打开 {port} 失败：{last}\n（端口被占用：请关掉 FlyMcu / 串口助手 / 其它监视窗口）")
+        raise SystemExit(3)
 
     # ★ 必须显式驱动 DTR/RTS（实测踩过，见 AGENTS 陷阱 33）：
     #   本板 CH340G 的自动下载电路把 **DTR 接了复位、RTS 接了 BOOT0**
