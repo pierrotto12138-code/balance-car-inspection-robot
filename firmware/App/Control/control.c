@@ -65,7 +65,12 @@ int EXTI15_10_IRQHandler(void)
 			Encoder_Left=Read_Encoder(2);                                    		//===读取编码器的值
 			Encoder_Right=Read_Encoder(4);
 #if CFG_ENCODER_DIR_INVERT
-			Encoder_Left=-Encoder_Left; Encoder_Right=-Encoder_Right;   /* ★ 按实测方向翻编码器（见 app_config.h）*/
+			#if CFG_ENCODER_LEFT_INVERT
+			Encoder_Left=-Encoder_Left;
+#endif
+#if CFG_ENCODER_RIGHT_INVERT
+			Encoder_Right=-Encoder_Right;
+#endif
 #endif                                   		//===读取编码器的值
 #ifdef USE_FREERTOS
 			/* ★ B（固件）2026-10-09（决策 49）：把这一拍（10 ms）的编码器计数累进里程计，
@@ -96,11 +101,15 @@ int EXTI15_10_IRQHandler(void)
 			Flag_Stop=0;	                                                      //===如果被放下就启动电机
 #endif
       if(Turn_Off(Angle_Balance,Voltage)==0)                              //===如果不存在异常
-				#if CFG_MOTOR_DIR_INVERT
-				Set_Pwm(-Moto1,-Moto2);      /* ★ 按当前接线翻向（见 app_config.h）*/
-#else
-				Set_Pwm(Moto1,Moto2);
-#endif                                               //===赋值给PWM寄存器
+				/* ★ 2026-10-13：分侧翻向（见 app_config.h 的方向开关说明）。
+			   实测两轮在前后倾时"原地对拧" ⇒ 左右两侧不一致，须**分侧**处置。*/
+#if CFG_MOTOR_LEFT_INVERT
+				Moto1 = -Moto1;
+#endif
+#if CFG_MOTOR_RIGHT_INVERT
+				Moto2 = -Moto2;
+#endif
+				Set_Pwm(Moto1,Moto2);                                               //===赋值给PWM寄存器
 			if(Bi_zhang==0)Led_Flash(100);                                      //===LED闪烁;常规模式 1s改变一次指示灯的状态
 			else           Led_Flash(0);                                        //===LED闪烁;超声波模式 指示灯常亮
 			Key();                                                              //===扫描按键状态 单击双击可以改变小车运行状态
