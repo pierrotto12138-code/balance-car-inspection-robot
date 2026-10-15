@@ -102,6 +102,11 @@ void MainWindow::showPage(int index)
     }
 }
 
+int MainWindow::currentPage() const
+{
+    return m_stack->currentIndex();
+}
+
 void MainWindow::buildMenus()
 {
     auto *viewMenu = menuBar()->addMenu(QStringLiteral("视图(&V)"));

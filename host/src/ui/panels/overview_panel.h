@@ -43,6 +43,10 @@ public slots:
     /// 20 Hz 拉取刷新（计划 §五：UI 以 20 Hz 定时刷新，而不是每来一帧就重绘）
     void refresh();
 
+public:
+    /// 顶部安全横幅当前文本（测试断言用：横幅是"一眼看出异常"的唯一出口）
+    QString bannerText() const;
+
 private:
     QGroupBox *buildAttitudeGroup();
     QGroupBox *buildMotionGroup();

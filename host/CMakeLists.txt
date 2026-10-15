@@ -48,9 +48,10 @@ add_library(domain STATIC
 target_include_directories(domain PUBLIC src)
 target_link_libraries(domain PUBLIC protocol Qt6::Core)
 
-# ---------------------------------------------------------------- 上位机界面
-add_executable(host
-    src/main.cpp
+# ---------------------------------------------------------------- 界面层（P1）
+# 做成**静态库**而不是直接编进 exe：这样界面可以被"无显示器"的冒烟测试直接驱动
+# （tests/test_ui.cpp），而不是只能靠人肉点界面。
+add_library(hostui STATIC
     src/ui/mainwindow.cpp
     src/ui/mainwindow.h
     src/ui/p0panel.cpp
@@ -66,7 +67,12 @@ add_executable(host
     src/ui/theme/theme.cpp
     src/ui/theme/theme.h
 )
-target_link_libraries(host PRIVATE hostio domain Qt6::Widgets)
+target_include_directories(hostui PUBLIC src)
+target_link_libraries(hostui PUBLIC hostio domain Qt6::Widgets)
+
+# ---------------------------------------------------------------- 上位机（装配层）
+add_executable(host src/main.cpp)
+target_link_libraries(host PRIVATE hostui)
 
 # ---------------------------------------------------------------- 测试
 enable_testing()
@@ -85,6 +91,12 @@ if(Qt6Test_FOUND)
     add_executable(test_domain tests/test_domain.cpp)
     target_link_libraries(test_domain PRIVATE domain hostio Qt6::Test)
     add_test(NAME domain COMMAND test_domain)
+
+    # P1：界面冒烟测试（不需要显示器：走 offscreen 平台插件）
+    add_executable(test_ui tests/test_ui.cpp)
+    target_link_libraries(test_ui PRIVATE hostui Qt6::Test)
+    add_test(NAME ui COMMAND test_ui)
+    set_tests_properties(ui PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 else()
     message(STATUS "Qt6::Test 未找到，跳过单元测试目标")
 endif()

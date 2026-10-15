@@ -39,6 +39,8 @@ public:
 
     /// 切换左侧导航页（0=总览 1=通信链路 2=协议自检）——供 `--shot` 自动截图使用
     void showPage(int index);
+    /// 当前导航页号（测试断言用）
+    int currentPage() const;
 
 private slots:
     /// 状态栏刷新（5 Hz：状态栏不需要 20 Hz，且它是常驻的）

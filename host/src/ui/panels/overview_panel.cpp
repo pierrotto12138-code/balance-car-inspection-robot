@@ -79,6 +79,11 @@ OverviewPanel::OverviewPanel(domain::VehicleState *state, io::LinkManager *mgr, 
     refresh();
 }
 
+QString OverviewPanel::bannerText() const
+{
+    return m_banner->text();
+}
+
 QGroupBox *OverviewPanel::buildAttitudeGroup()
 {
     auto *g = new QGroupBox(QStringLiteral("姿态 0x10 · 20 Hz"));
