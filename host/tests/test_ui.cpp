@@ -27,6 +27,7 @@
 #include "ui/panels/overview_panel.h"
 #include "ui/panels/patrol_panel.h"
 #include "ui/widgets/scope_plot.h"
+#include "ui/widgets/value_card.h"
 
 #include <QLabel>
 #include <QPushButton>
@@ -300,10 +301,40 @@ private slots:
         QCOMPARE(enabledMotion, 1);
     }
 
+    void patrolPanel_cardsKeepSubInSync()
+    {
+        // 回归守卫：**值更新后副标题必须同步更新**。
+        // 这类 bug 的表现是"值显示自主巡航、副标题还写着无数据"—— 同一张卡自相矛盾，
+        // 而人一眼看过去只会以为"数据没到"（P2 的湿度卡、P3 的任务卡都踩过同一处）。
+        io::LinkManager mgr;
+        VehicleState st;
+        AlarmEngine alarm;
+        KeepaliveEngine keepalive;
+        data::EventLog log;
+        PatrolPanel panel(&st, &mgr, &alarm, &keepalive, &log);
+        panel.show();
+        QTest::qWait(30);
+        panel.refresh();
+
+        auto *task = panel.findChild<ValueCard *>(QStringLiteral("patrolTask"));
+        QVERIFY(task != nullptr);
+        QVERIFY2(task->subText().contains(QStringLiteral("无数据")),
+                 "空数据时必须明说无数据（不能拿 0 冒充满值）");
+
+        testframes::feedAll(st);
+        panel.refresh();
+        QVERIFY2(!task->subText().contains(QStringLiteral("无数据")),
+                 qPrintable(QStringLiteral("有数据后副标题仍是：%1").arg(task->subText())));
+        QVERIFY(task->subText().contains(QStringLiteral("0x12")));
+        QCOMPARE(task->valueText(), QString::fromUtf8(domain::taskName(proto::TaskId::Patrol)));
+    }
+
     void patrolPanel_aestopAndTaskAreLogged()
     {
         io::LinkManager mgr;
         mgr.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
+        mgr.open(io::LinkKind::Wire); // 必须真的把链路打开：send() 只走"已连接的主链路"
+        QTest::qWait(30);
         VehicleState st;
         AlarmEngine alarm;
         KeepaliveEngine keepalive;
@@ -313,17 +344,36 @@ private slots:
         QTest::qWait(30);
 
         QPushButton *estop = nullptr;
+        QPushButton *patrol = nullptr;
         for (QPushButton *b : panel.findChildren<QPushButton *>()) {
             if (b->text().contains(QStringLiteral("紧急停机"))) {
                 estop = b;
             }
+            if (b->text().contains(QStringLiteral("自主巡航"))) {
+                patrol = b;
+            }
         }
-        QVERIFY(estop != nullptr);
+        QVERIFY(estop != nullptr && patrol != nullptr);
+
+        const quint64 before = mgr.stats(io::LinkKind::Wire).bytesTx;
         estop->click();
         QCOMPARE(log.size(), 1); // 操作员动作必须留档（复盘"谁把车停了"）
         QVERIFY(log.at(0).operatorAction);
         QVERIFY(log.at(0).safety);
-        QCOMPARE(mgr.stats(io::LinkKind::Wire).bytesTx > 0, true); // 真的发出了字节
+        QVERIFY(log.at(0).title.contains(QStringLiteral("紧急停机")));
+        QVERIFY2(mgr.stats(io::LinkKind::Wire).bytesTx > before,
+                 "急停必须真的写出字节（只记日志不下发，就是'算出该停车≠真的停车'那一类错误）");
+        // 0x2F 是 N=0：整帧 7 字节
+        QCOMPARE(mgr.stats(io::LinkKind::Wire).bytesTx - before, quint64(7));
+
+        // 任务下发（0x21 N=2）＝ 9 字节，且是协议规定的解除锁存路径 → 也算安全事件
+        const quint64 before2 = mgr.stats(io::LinkKind::Wire).bytesTx;
+        patrol->click();
+        QCOMPARE(log.size(), 2);
+        QVERIFY(log.at(1).safety);
+        QCOMPARE(mgr.stats(io::LinkKind::Wire).bytesTx - before2, quint64(9));
+
+        mgr.close(io::LinkKind::Wire);
     }
 };
 

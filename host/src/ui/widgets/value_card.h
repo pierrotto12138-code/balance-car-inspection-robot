@@ -37,6 +37,10 @@ public:
     void setDecimals(int d);
     void setSeverity(domain::Severity s);
     void setSub(const QString &text);
+    /// 副标题当前文本（测试用：防止"值更新了、副标题还留着『无数据』"这类陈旧显示）
+    QString subText() const;
+    /// 数值区当前文本
+    QString valueText() const;
     /// 数值区的字号（诊断类小卡片可以用小一号）
     void setValuePointSize(int pt);
 

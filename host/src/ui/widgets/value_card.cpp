@@ -131,3 +131,13 @@ void ValueCard::setSub(const QString &text)
 {
     m_sub->setText(text);
 }
+
+QString ValueCard::subText() const
+{
+    return m_sub->text();
+}
+
+QString ValueCard::valueText() const
+{
+    return m_value->text();
+}

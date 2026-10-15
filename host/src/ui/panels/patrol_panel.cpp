@@ -116,6 +116,11 @@ void PatrolPanel::buildUi()
         m_phase = new ValueCard(QStringLiteral("阶段"), QString(), 0, g);
         m_checkpoint = new ValueCard(QStringLiteral("当前巡检点"), QString(), 0, g);
         m_fault = new ValueCard(QStringLiteral("异常标志"), QString(), 0, g);
+        // 便于测试定位（也表明"这四张卡的值与副标题必须同步更新"）
+        m_task->setObjectName(QStringLiteral("patrolTask"));
+        m_phase->setObjectName(QStringLiteral("patrolPhase"));
+        m_checkpoint->setObjectName(QStringLiteral("patrolCheckpoint"));
+        m_fault->setObjectName(QStringLiteral("patrolFault"));
         m_task->setValuePointSize(14);
         m_phase->setValuePointSize(14);
         m_fault->setValuePointSize(14);
@@ -513,6 +518,14 @@ void PatrolPanel::refresh()
         m_fault->setText(domain::faultFlagsText(t.faultFlags));
         m_fault->setSeverity(t.anyFault() ? domain::Severity::Alarm : domain::Severity::Ok);
         m_progress->setValue(t.progressPct);
+        // ★ 副标题必须跟着一起更新：`setValue/setText` **不会**清掉旧的副标题，
+        //   否则会出现"值是自主巡航、副标题还写着『无数据』"这种自相矛盾的显示
+        //   （P2 的湿度卡、P3 的任务卡都踩过同一处）。
+        const QString src = QStringLiteral("0x12 · %1 ms 前").arg(st.ageMs(proto::up::kTask));
+        m_task->setSub(src);
+        m_phase->setSub(src);
+        m_checkpoint->setSub(src);
+        m_fault->setSub(src);
         updatePhaseChips(t, true);
     } else {
         const QString hint = st.received(proto::up::kTask)
