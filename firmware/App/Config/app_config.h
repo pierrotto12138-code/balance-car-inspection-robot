@@ -89,7 +89,7 @@
 #define CFG_OVR_BALANCE_KD       1.0f     /* 平衡环 D（过冲大就先加它：1→1.5）*/
 #define CFG_OVR_VELOCITY_KP      -80.0f    /* ★ 本轮恢复：速度环 P（抑制漂移；若跑飞改 -80）*/
 #define CFG_OVR_VELOCITY_KI      -0.4f     /* ★ 本轮恢复：速度环 I（若跑飞改 -0.4）*/
-#define CFG_OVR_ZHONGZHI         1.0f     /* 角度中值（怀疑重心偏后 ⇒ 可 ±0.3~0.5 试）*/
+#define CFG_OVR_ZHONGZHI         2.0f     /* 角度中值（怀疑重心偏后 ⇒ 可 ±0.3~0.5 试）*/
 #define CFG_OVR_TURN_KP          0.0f     /* 转向环保持 0（不再转圈）*/
 #define CFG_OVR_TURN_KD          0.0f
 

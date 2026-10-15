@@ -10,6 +10,8 @@
 #include "codec.h" // 事件码常量（自检里识别 0x13）
 #include "data/event_log.h"
 #include "domain/alarm.h"
+#include "domain/commands.h"
+#include "domain/keepalive.h"
 #include "domain/units.h"
 #include "domain/vehicle_state.h"
 #include "io/link_manager.h"
@@ -112,6 +114,14 @@ int runSelfTest(double seconds, double rate)
     QObject::connect(&alarmTick, &QTimer::timeout, &alarm, [&state, &alarm]() { alarm.tick(state); });
     alarmTick.start();
 
+    // 保活（P3）：**默认心跳 0x1F**（不解除锁存）；真实运行里由界面上的开关控制，
+    // 自检里开着它，顺便验证"下行链路真的能发出去"（假源会把字节数记进 bytesTx）
+    domain::KeepaliveEngine keepalive;
+    keepalive.setSink([&mgr](quint8 cmd, const QByteArray &data) { return mgr.send(cmd, data); });
+    QObject::connect(&mgr, &io::LinkManager::linkStateChanged, &keepalive, [&mgr, &keepalive]() {
+        keepalive.setLinkReady(mgr.isOpen(io::LinkKind::Wire) || mgr.isOpen(io::LinkKind::Bluetooth));
+    });
+
     QTextStream out(stdout);
     out << QStringLiteral("自检中：假源 ×%1，跑 %2 s（协议周期 0x10/0x11 20 Hz…）\n")
                .arg(rate, 0, 'f', 1)
@@ -119,6 +129,7 @@ int runSelfTest(double seconds, double rate)
     out.flush();
 
     mgr.openAll();
+    keepalive.setEnabled(true); // 打开时链路已就绪 → 立刻发第一条，不等周期
 
     QEventLoop loop;
     QTimer::singleShot(static_cast<int>(seconds * 1000.0), &loop, &QEventLoop::quit);
@@ -148,6 +159,15 @@ int runSelfTest(double seconds, double rate)
     out << describeState(state, mgr);
     out << QStringLiteral("\n【告警判定与事件流】domain/alarm + data/event_log\n");
     out << describeAlarms(state, alarm, log);
+    out << QStringLiteral("\n【保活（P3）】下行链路是否真的在周期性发合法帧\n")
+        << QStringLiteral("  方式：%1 · 周期 %2 ms · 已发 %3 条 · 最近一条 %4 ms 前\n")
+               .arg(keepalive.mode() == domain::KeepaliveMode::Heartbeat
+                        ? QStringLiteral("心跳 0x1F（不解除锁存）")
+                        : QStringLiteral("使能 0x20（会解除锁存！）"))
+               .arg(keepalive.intervalMs())
+               .arg(keepalive.sentCount())
+               .arg(keepalive.sinceLastSendMs() < 0 ? QStringLiteral("--")
+                                                    : QString::number(keepalive.sinceLastSendMs()));
     out.flush();
 
     // 界面能不能看到数据，取决于这几条：必到的帧必须都解析成功，且没有格式错帧
@@ -444,8 +464,8 @@ int main(int argc, char *argv[])
                                  QStringLiteral("毫秒"), QStringLiteral("2500"));
     parser.addOption(shotDelay);
     QCommandLineOption shotTab(QStringLiteral("shot-tab"),
-                               QStringLiteral("截图对应的导航页：0=总览 1=曲线与告警 2=事件流 "
-                                              "3=通信链路 4=协议自检"),
+                               QStringLiteral("截图对应的导航页：0=总览 1=巡检与控制 2=曲线与告警 "
+                                              "3=事件流 4=通信链路 5=协议自检"),
                                QStringLiteral("页号"), QStringLiteral("0"));
     parser.addOption(shotTab);
     // 假源速率倍数：×5 时约 12 s 就能看到完整的安全剧本（气体冲高→急停锁存→解除→低压）
@@ -482,6 +502,7 @@ int main(int argc, char *argv[])
     io::LinkManager manager;
     domain::VehicleState state;
     domain::AlarmEngine alarm;
+    domain::KeepaliveEngine keepalive;
     data::EventLog log;
 
     // ① io → domain/data：跨线程用队列连接传值类型（解析在工作线程完成，见 io/serial_link.h）
@@ -500,13 +521,24 @@ int main(int argc, char *argv[])
     QObject::connect(&alarmTick, &QTimer::timeout, &alarm, [&state, &alarm]() { alarm.tick(state); });
     alarmTick.start();
 
+    // ⑤ 保活：把"发送"接到真实链路上（默认心跳 0x1F，不解除锁存），
+    //    并跟踪"是否有链路可用"——链路没开时它不发（不会假装在保活）
+    keepalive.setSink([&manager](quint8 cmd, const QByteArray &data) {
+        return manager.send(cmd, data);
+    });
+    QObject::connect(&manager, &io::LinkManager::linkStateChanged, &keepalive, [&manager, &keepalive]() {
+        keepalive.setLinkReady(manager.isOpen(io::LinkKind::Wire) ||
+                               manager.isOpen(io::LinkKind::Bluetooth));
+    });
+    keepalive.setEnabled(true); // 默认开启（协议 §11.5 第 6 条：不保活板子会锁存）
+
     if (parser.isSet(demo)) {
         manager.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
         manager.setMode(io::LinkKind::Bluetooth, io::LinkManager::Mode::Replay);
         manager.setReplayRate(parser.value(rate).toDouble());
     }
 
-    MainWindow w(&manager, &state, &alarm, &log);
+    MainWindow w(&manager, &state, &alarm, &keepalive, &log);
     w.show();
     if (parser.isSet(demo)) {
         manager.openAll(); // 窗口显示后再开链路，界面上能直接看到状态变化

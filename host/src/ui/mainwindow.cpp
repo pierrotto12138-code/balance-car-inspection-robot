@@ -2,11 +2,13 @@
 
 #include "data/event_log.h"
 #include "domain/alarm.h"
+#include "domain/keepalive.h"
 #include "domain/units.h"
 #include "domain/vehicle_state.h"
 #include "ui/panels/curve_panel.h"
 #include "ui/panels/event_panel.h"
 #include "ui/panels/overview_panel.h"
+#include "ui/panels/patrol_panel.h"
 #include "ui/p0panel.h"
 #include "ui/theme/theme.h"
 
@@ -44,8 +46,9 @@ QLabel *statusLabel()
 } // namespace
 
 MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain::AlarmEngine *alarm,
-                       data::EventLog *log, QWidget *parent)
-    : QMainWindow(parent), m_mgr(mgr), m_state(state), m_alarm(alarm), m_log(log)
+                       domain::KeepaliveEngine *keepalive, data::EventLog *log, QWidget *parent)
+    : QMainWindow(parent), m_mgr(mgr), m_state(state), m_alarm(alarm), m_keepalive(keepalive),
+      m_log(log)
 {
     setWindowTitle(QStringLiteral("仓储环境安全巡检机器人 · 上位机"));
     resize(1500, 940);
@@ -60,17 +63,20 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain
     m_nav->setObjectName(QStringLiteral("nav"));
     m_nav->setFixedWidth(150);
     m_nav->addItem(QStringLiteral("① 总览"));
-    m_nav->addItem(QStringLiteral("② 曲线与告警"));
-    m_nav->addItem(QStringLiteral("③ 事件流"));
-    m_nav->addItem(QStringLiteral("④ 通信链路"));
-    m_nav->addItem(QStringLiteral("⑤ 协议自检"));
+    m_nav->addItem(QStringLiteral("② 巡检与控制"));
+    m_nav->addItem(QStringLiteral("③ 曲线与告警"));
+    m_nav->addItem(QStringLiteral("④ 事件流"));
+    m_nav->addItem(QStringLiteral("⑤ 通信链路"));
+    m_nav->addItem(QStringLiteral("⑥ 协议自检"));
 
     m_stack = new QStackedWidget(central);
     m_overview = new OverviewPanel(m_state, m_mgr, m_alarm, m_stack);
+    m_patrol = new PatrolPanel(m_state, m_mgr, m_alarm, m_keepalive, m_log, m_stack);
     m_curves = new CurvePanel(m_state, m_mgr, m_alarm, m_stack);
     m_events = new EventPanel(m_log, m_stack);
     m_p0 = new P0Panel(m_mgr, m_stack);
     m_stack->addWidget(m_overview);
+    m_stack->addWidget(m_patrol);
     m_stack->addWidget(m_curves);
     m_stack->addWidget(m_events);
     m_stack->addWidget(m_p0);
@@ -129,6 +135,7 @@ void MainWindow::buildStatusBar()
     m_stBattery = statusLabel();
     m_stSafety = statusLabel();
     m_stAlarm = statusLabel();
+    m_stKeepalive = statusLabel();
     m_stFrames = statusLabel();
     // 假源水印放在最左边：**演示数据必须一眼可辨**（计划 §11.2 第 10 条）
     statusBar()->addWidget(m_stDemo);
@@ -137,6 +144,7 @@ void MainWindow::buildStatusBar()
     statusBar()->addPermanentWidget(m_stBattery);
     statusBar()->addPermanentWidget(m_stAlarm);
     statusBar()->addPermanentWidget(m_stSafety);
+    statusBar()->addPermanentWidget(m_stKeepalive);
     statusBar()->addPermanentWidget(m_stFrames);
 }
 
@@ -295,6 +303,35 @@ void MainWindow::refreshStatusBar()
     m_stFrames->setText(QStringLiteral("事件 %1 · 格式错帧 %2")
                             .arg(m_log->size())
                             .arg(m_state->malformedFrames()));
+
+    // ---- 保活：它是"车会不会因为上位机安静半秒而锁存"的关键，必须常显 ----
+    if (m_keepalive != nullptr) {
+        const bool on = m_keepalive->enabled();
+        const bool ready = m_keepalive->linkReady();
+        const bool risky = (m_keepalive->mode() == domain::KeepaliveMode::EnableZeroSpeed);
+        QString t = QStringLiteral("保活 ");
+        if (!on) {
+            t += QStringLiteral("关闭 ⚠");
+        } else if (!ready) {
+            t += QStringLiteral("待链路");
+        } else {
+            t += QStringLiteral("%1 ms · 已发 %2").arg(m_keepalive->intervalMs()).arg(m_keepalive->sentCount());
+            if (risky) {
+                t += QStringLiteral(" · 使能模式⚠");
+            }
+        }
+        m_stKeepalive->setText(t);
+        m_stKeepalive->setStyleSheet(
+            QStringLiteral("color:%1;")
+                .arg(QString::fromLatin1(!on ? theme::kWarn
+                                         : risky ? theme::kAlarm
+                                                 : (ready ? theme::kOk : theme::kWarn))));
+        m_stKeepalive->setToolTip(
+            QStringLiteral("固件规定：500 ms 没收到任何下行帧 ⇒ 安全停车并锁存（硬件按键也解不开）。\n"
+                           "所以上位机要周期发合法下行帧。\n"
+                           "★ 默认用心跳 0x1F：只声明在线，不使能电机、不解除锁存。\n"
+                           "★ 使能 0x20 保活会**周期性解除安全锁存**，等于绕过急停保护（仅在确需保持使能时用）。"));
+    }
 }
 
 QWidget *MainWindow::buildSelfTestPage()

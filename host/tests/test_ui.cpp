@@ -18,14 +18,18 @@
 #include "codec.h"
 #include "data/event_log.h"
 #include "domain/alarm.h"
+#include "domain/keepalive.h"
 #include "domain/vehicle_state.h"
 #include "io/link_manager.h"
 #include "ui/mainwindow.h"
 #include "ui/panels/curve_panel.h"
 #include "ui/panels/event_panel.h"
 #include "ui/panels/overview_panel.h"
+#include "ui/panels/patrol_panel.h"
 #include "ui/widgets/scope_plot.h"
 
+#include <QLabel>
+#include <QPushButton>
 #include <QTableWidget>
 
 #include "frame_factory.h"
@@ -223,25 +227,103 @@ private slots:
         io::LinkManager mgr;
         VehicleState st;
         AlarmEngine alarm;
+        KeepaliveEngine keepalive;
         data::EventLog log;
-        MainWindow w(&mgr, &st, &alarm, &log);
+        MainWindow w(&mgr, &st, &alarm, &keepalive, &log);
         w.resize(1400, 900);
         w.show();
         QTest::qWait(50);
 
         QCOMPARE(w.pageTitle(0), QStringLiteral("① 总览"));
-        QCOMPARE(w.pageTitle(1), QStringLiteral("② 曲线与告警"));
-        QCOMPARE(w.pageTitle(2), QStringLiteral("③ 事件流"));
-        for (int i = 0; i < 5; ++i) {
+        QCOMPARE(w.pageTitle(1), QStringLiteral("② 巡检与控制"));
+        QCOMPARE(w.pageTitle(2), QStringLiteral("③ 曲线与告警"));
+        QCOMPARE(w.pageTitle(3), QStringLiteral("④ 事件流"));
+        for (int i = 0; i < 6; ++i) {
             w.showPage(i);
             QTest::qWait(30);
             QCOMPARE(w.currentPage(), i);
         }
         // 有数据时切回曲线页也不能崩（20 Hz/10 Hz 定时器真的会跑几拍）
         testframes::feedAll(st);
-        w.showPage(1);
+        w.showPage(2);
         QTest::qWait(120);
         QVERIFY(w.isVisible());
+    }
+
+    // ---------------------------------------------------------------- P3：巡检与控制
+    void patrolPanel_interlocksMotionWhileLatched()
+    {
+        io::LinkManager mgr;
+        mgr.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay); // 假装有链路，发得出去
+        VehicleState st;
+        AlarmEngine alarm;
+        KeepaliveEngine keepalive;
+        data::EventLog log;
+        PatrolPanel panel(&st, &mgr, &alarm, &keepalive, &log);
+        panel.resize(1200, 800);
+        panel.show();
+        QTest::qWait(30);
+
+        // 未锁存：能发任务（0x21）与遥控（0x20）
+        testframes::feedAll(st);
+        panel.refresh();
+
+        // 锁存：横幅要明确说"需重下任务解除锁存"（P3 的验收判据之一）
+        st.onFrame(io::LinkKind::Wire, proto::up::kEvent,
+                   testframes::event(proto::EventCode::EstopReceived));
+        panel.refresh();
+        auto *banner = panel.findChild<QLabel *>();
+        QVERIFY(banner != nullptr);
+        // 所有"会让车动"的入口在锁存期间必须被禁用（靠禁用而不是靠提示语）
+        int disabledMotion = 0;
+        for (QPushButton *b : panel.findChildren<QPushButton *>()) {
+            if (b->text().contains(QStringLiteral("前")) || b->text().contains(QStringLiteral("后")) ||
+                b->text().contains(QStringLiteral("左")) || b->text().contains(QStringLiteral("右")) ||
+                b->text().contains(QStringLiteral("巡航")) || b->text().contains(QStringLiteral("返航"))) {
+                if (!b->isEnabled()) {
+                    ++disabledMotion;
+                }
+            }
+        }
+        QVERIFY2(disabledMotion >= 6, qPrintable(QStringLiteral("锁存期间应有 6 个起点类按钮被禁用，实际 %1")
+                                                     .arg(disabledMotion)));
+        // 解除锁存后按钮应恢复
+        st.onFrame(io::LinkKind::Wire, proto::up::kEvent,
+                   testframes::event(proto::EventCode::SafetyReleased));
+        panel.refresh();
+        int enabledMotion = 0;
+        for (QPushButton *b : panel.findChildren<QPushButton *>()) {
+            if (b->text().contains(QStringLiteral("前")) && b->isEnabled()) {
+                ++enabledMotion;
+            }
+        }
+        QCOMPARE(enabledMotion, 1);
+    }
+
+    void patrolPanel_aestopAndTaskAreLogged()
+    {
+        io::LinkManager mgr;
+        mgr.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Replay);
+        VehicleState st;
+        AlarmEngine alarm;
+        KeepaliveEngine keepalive;
+        data::EventLog log;
+        PatrolPanel panel(&st, &mgr, &alarm, &keepalive, &log);
+        panel.show();
+        QTest::qWait(30);
+
+        QPushButton *estop = nullptr;
+        for (QPushButton *b : panel.findChildren<QPushButton *>()) {
+            if (b->text().contains(QStringLiteral("紧急停机"))) {
+                estop = b;
+            }
+        }
+        QVERIFY(estop != nullptr);
+        estop->click();
+        QCOMPARE(log.size(), 1); // 操作员动作必须留档（复盘"谁把车停了"）
+        QVERIFY(log.at(0).operatorAction);
+        QVERIFY(log.at(0).safety);
+        QCOMPARE(mgr.stats(io::LinkKind::Wire).bytesTx > 0, true); // 真的发出了字节
     }
 };
 

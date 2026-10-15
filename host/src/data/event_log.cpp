@@ -1,5 +1,6 @@
 #include "data/event_log.h"
 
+#include "domain/commands.h"
 #include "domain/frames.h"
 
 namespace data {
@@ -99,6 +100,24 @@ void EventLog::onAlarmCleared(const domain::AlarmRecord &r)
     e.cmd = 0;
     e.title = QStringLiteral("解除：%1").arg(r.title);
     e.detail = alarmDetail(r, false);
+    append(e);
+}
+
+void EventLog::onOperatorAction(quint8 cmd, const QString &detail, bool ok)
+{
+    EventEntry e;
+    e.local = true;
+    e.raised = true;
+    e.operatorAction = true;
+    e.cmd = cmd;
+    // 只有"急停"与"任务指示"按安全事件着色：它们分别**锁存**与**解除**锁存，是安全链路上的动作。
+    // 遥控方向键（0x20）虽然也可能解除锁存，但一次遥控会连发几十条，
+    // 全标成安全事件会把"只看安全事件"这个过滤器刷爆 —— 它们的后果写在巡检页的提示里。
+    e.safety = (cmd == proto::down::kEstop || cmd == proto::down::kTask);
+    e.title = QStringLiteral("本机下发：%1%2")
+                  .arg(QString::fromUtf8(domain::cmd::name(cmd)),
+                       ok ? QString() : QStringLiteral("（失败）"));
+    e.detail = detail;
     append(e);
 }
 

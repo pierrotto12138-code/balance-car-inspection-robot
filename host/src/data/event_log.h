@@ -36,9 +36,10 @@ struct EventEntry {
     quint8 cmd = 0;       ///< 0x13 = 机器人事件；0 = 上位机本地产生的条目
     quint8 code = 0;      ///< 事件码（仅 cmd=0x13 有意义）
     quint32 robotTsMs = 0; ///< 机器人侧时间戳（仅 cmd=0x13）
-    bool local = false;   ///< true = 本机判定（告警发生/解除）
+    bool local = false;   ///< true = 本机判定/本机动作
     bool raised = true;   ///< 告警条目：true=发生，false=解除
-    bool safety = false;  ///< 是否安全通道事件（0x08/0x09/0x0A）
+    bool operatorAction = false; ///< true = 操作员下发的命令（急停/任务/遥控…）
+    bool safety = false;  ///< 是否安全通道事件（0x08/0x09/0x0A）或安全类命令
     QString title;        ///< 一句话内容（事件名 / 告警标题）
     QString detail;       ///< 补充（数值/阈值/停车时长…）
     qint64 sinceSafetyStopMs = -1; ///< `0x09` 条目：距上次停车的时长
@@ -72,6 +73,11 @@ public slots:
     /// 告警发生/解除（由 `domain::AlarmEngine` 驱动）
     void onAlarmRaised(const domain::AlarmRecord &rec);
     void onAlarmCleared(const domain::AlarmRecord &rec);
+    /// 操作员动作留档（下发了哪条命令、成没成功）。
+    ///
+    /// 为什么要记进事件流：复盘"车为什么停了"时，答案常常就是"某人在 12:01:03 按了急停"
+    /// 或"重下任务把锁存解了"。这些动作**不在机器人的上报里**，只有上位机自己知道。
+    void onOperatorAction(quint8 cmd, const QString &detail, bool ok);
     void clear();
 
 signals:

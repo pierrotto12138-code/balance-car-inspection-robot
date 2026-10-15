@@ -46,6 +46,10 @@ add_library(domain STATIC
     src/domain/vehicle_state.h
     src/domain/alarm.cpp
     src/domain/alarm.h
+    src/domain/commands.cpp
+    src/domain/commands.h
+    src/domain/keepalive.cpp
+    src/domain/keepalive.h
 )
 target_include_directories(domain PUBLIC src)
 target_link_libraries(domain PUBLIC protocol Qt6::Core)
@@ -84,6 +88,8 @@ add_library(hostui STATIC
     src/ui/panels/curve_panel.h
     src/ui/panels/event_panel.cpp
     src/ui/panels/event_panel.h
+    src/ui/panels/patrol_panel.cpp
+    src/ui/panels/patrol_panel.h
     src/ui/widgets/value_card.cpp
     src/ui/widgets/value_card.h
     src/ui/widgets/led_indicator.cpp
@@ -130,6 +136,11 @@ if(Qt6Test_FOUND)
     add_executable(test_alarm tests/test_alarm.cpp)
     target_link_libraries(test_alarm PRIVATE domain hostdata hostio Qt6::Test)
     add_test(NAME alarm COMMAND test_alarm)
+
+    # P3：下行命令构造与保活引擎测试（纯逻辑，不需要硬件与界面）
+    add_executable(test_command tests/test_command.cpp)
+    target_link_libraries(test_command PRIVATE domain hostdata hostio Qt6::Test)
+    add_test(NAME command COMMAND test_command)
 else()
     message(STATUS "Qt6::Test 未找到，跳过单元测试目标")
 endif()
