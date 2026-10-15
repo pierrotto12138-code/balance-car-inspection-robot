@@ -331,7 +331,7 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
 ///      ⚠️ 但固件的失联保护是"500 ms 没收到任何下行帧 → 安全停车"（协议 §五），
 ///      所以纯监听会让正在跑的车停下来 —— 要边跑边看请加 `--probe-heartbeat`，
 ///      它每 200 ms 发一条 0x1F 心跳（协议 §七 约定 7 推荐的做法），车就不会停。
-int runProbe(const QString &port, int baud, double seconds, bool heartbeat)
+int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool readback)
 {
     io::LinkManager mgr;
     mgr.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Serial);
@@ -348,10 +348,23 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat)
     QObject::connect(&mgr, &io::LinkManager::frameReady,
                      [&perCmd](io::LinkKind, quint8 cmd, const QByteArray &) { ++perCmd[cmd]; });
 
+    // 0x24 回显（"实际生效值"）：全量回读的结果就靠它收集
+    QHash<quint8, float> echoes;
+    QObject::connect(&mgr, &io::LinkManager::frameReady, &mgr,
+                     [&echoes](io::LinkKind, quint8 cmd, const QByteArray &d) {
+                         if (cmd != proto::down::kPidTune) {
+                             return;
+                         }
+                         domain::PidTuneData e;
+                         if (domain::decodePidTune(d, e)) {
+                             echoes.insert(e.paramId, e.value);
+                         }
+                     });
+
     QTextStream out(stdout);
     // 链路的每一次状态变化都要打出来 —— "连不上"和"连上了但没数据"是两回事，
     // 而端口被占用（FlyMcu/别的工具开着）是联调时最常见的一种，必须当场看得见。
-    QObject::connect(&mgr, &io::LinkManager::linkStateChanged,
+    QObject::connect(&mgr, &io::LinkManager::linkStateChanged, &mgr,
                      [&out](io::LinkKind k, io::LinkState st, const QString &detail) {
                          out << QStringLiteral("  [链路] %1：%2 %3\n")
                                     .arg(QString::fromUtf8(io::linkName(k)),
@@ -359,13 +372,17 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat)
                          out.flush();
                      });
 
-    out << QStringLiteral("只读探测 %1 @ %2 8N1，%3 s%4\n")
+    out << QStringLiteral("只读探测 %1 @ %2 8N1，%3 s%4%5\n")
                .arg(port)
                .arg(baud)
                .arg(seconds, 0, 'f', 1)
-               .arg(heartbeat ? QStringLiteral("（每 200 ms 发 0x1F 心跳，车不会因失联停车）")
-                              : QStringLiteral("（**不发任何下行帧** —— 固件 500 ms 后会安全停车）"));
-    if (!heartbeat) {
+               .arg(heartbeat || readback
+                        ? QStringLiteral("（每 200 ms 发 0x1F 心跳，车不会因失联停车）")
+                        : QStringLiteral("（**不发任何下行帧** —— 固件 500 ms 后会安全停车）"))
+               .arg(readback ? QStringLiteral("；先发一条 0x24 全量回读(0xFF)：**只读命令**，"
+                                              "不写参数、不动 Flash")
+                             : QString());
+    if (!heartbeat && !readback) {
         out << QStringLiteral("提示：若车正在跑，请改用 --probe-heartbeat，避免把它“探”停。\n");
     }
     out.flush();
@@ -374,12 +391,24 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat)
 
     QEventLoop loop;
     QTimer hb;
-    if (heartbeat) {
+    if (heartbeat || readback) {
+        // 回读也要打心跳：否则"问完一句就走"之后 500 ms 车就进了失联锁存（下一个人接手时会莫名）
         hb.setInterval(200);
         QObject::connect(&hb, &QTimer::timeout, [&mgr]() {
             mgr.sendTo(io::LinkKind::Wire, proto::up::kHeartbeat, QByteArray());
         });
         hb.start();
+    }
+    if (readback) {
+        // 等链路稳一点再发（刚打开就发容易与复位/清缓冲撞在一起）
+        QTimer::singleShot(300, &mgr, [&mgr, &out]() {
+            QByteArray payload;
+            if (domain::cmd::pidTunePayload(0xFF, 0.0f, &payload)) {
+                const qint64 n = mgr.sendTo(io::LinkKind::Wire, proto::down::kPidTune, payload);
+                out << QStringLiteral("  [下行] 0x24 全量回读(0xFF) → 写出 %1 B\n").arg(n);
+                out.flush();
+            }
+        });
     }
     QElapsedTimer wall;
     wall.start();
@@ -424,6 +453,78 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat)
     }
     out << QStringLiteral("各命令字实际收到条数（缺哪个 = 固件没发那个命令）：\n") << cover;
     out << QStringLiteral("\n【状态聚合】\n") << describeState(state, mgr);
+
+    // ---- 0x24 全量回读：把"实际生效值"与参数定义表逐项对照 ----
+    if (readback) {
+        out << QStringLiteral("\n【0x24 全量回读】请求 ID=0xFF → 收到 %1 条回显\n").arg(echoes.size());
+        // B 侧接口文档 §3.1 给出的本机定稿值（用于对照，不用于判对错）
+        static const double kFactory[7] = {300.0, 1.0, -80.0, -0.4, 0.5, 0.0, 0.0};
+        for (const data::PidParamInfo &p : data::pidParams()) {
+            const bool have = echoes.contains(p.id);
+            const double v = have ? double(echoes.value(p.id)) : 0.0;
+            QString verdict;
+            if (!have) {
+                verdict = QStringLiteral("✘ 没回（固件未实现回读？长度不符？）");
+            } else {
+                QString why;
+                const data::ParamCheck chk = data::checkPidValue(p.id, v, &why);
+                const bool sameAsFactory = std::fabs(v - kFactory[p.id - 1]) < 1e-4;
+                verdict = (chk == data::ParamCheck::Ok)
+                              ? (sameAsFactory ? QStringLiteral("✔ 范围内，且等于 B 侧定稿值")
+                                               : QStringLiteral("✔ 范围内（与 B 侧定稿值不同：%1）")
+                                                     .arg(kFactory[p.id - 1]))
+                              : QStringLiteral("⚠ %1").arg(why);
+            }
+            out << QStringLiteral("  0x%1 %2（%3）实际 %4  范围 %5~%6  %7\n")
+                       .arg(p.id, 2, 16, QLatin1Char('0'))
+                       .toUpper()
+                       .replace(QStringLiteral("0X"), QStringLiteral("0x"))
+                       .arg(QString::fromUtf8(p.name), QString::fromUtf8(p.baseVar))
+                       .arg(have ? QString::number(v, 'f', 4) : QStringLiteral("--"))
+                       .arg(p.lo)
+                       .arg(p.hi)
+                       .arg(verdict);
+        }
+        // ---- 0x16 的三个"一眼定位故障"组合（B 侧接口文档 §2.1 / §7 的现场判据）----
+        if (state.received(proto::up::kLoop)) {
+            const domain::LoopData &l = state.loop();
+            const double ratio = (l.moto1 != 0) ? (double(l.ccrA) / std::abs(double(l.moto1))) : 0.0;
+            out << QStringLiteral("\n【0x16 判读（B 侧口径）】\n")
+                << QStringLiteral("  固件版本：%1/%2\n")
+                       .arg(domain::hexByte(l.fwVersion), domain::firmwareVersionText(l.fwVersion))
+                << QStringLiteral("  Turn=%1 时两轮命令 %2（期望相同）\n")
+                       .arg(l.turnPwm)
+                       .arg(l.moto1 == l.moto2 ? QStringLiteral("相同 ✔")
+                                               : QStringLiteral("不同 ⚠（差速/极性 bug？）"))
+                << QStringLiteral("  Moto1=%1 CCR_A=%2 ⇒ CCR/|Moto| = %3（期望 ≈1.17）· %4\n")
+                       .arg(l.moto1)
+                       .arg(l.ccrA)
+                       .arg(ratio, 0, 'f', 3)
+                       .arg(l.executionState() == domain::LoopData::Execution::Mismatch
+                                ? QStringLiteral("⚠ 算了没执行（未停车却 CCR=0）")
+                            : l.executionState() == domain::LoopData::Execution::Protected
+                                ? QStringLiteral("保护中，未驱动（Flag_Stop/锁存 ⇒ 正常）")
+                                : QStringLiteral("✔ 已执行"))
+                << QStringLiteral("  编码器本拍增量：左 %1 / 右 %2（★ 手推前进时应**同号**；"
+                                  "静止时都≈0，此判据需在推车时看）\n")
+                       .arg(l.encLeft)
+                       .arg(l.encRight)
+                << QStringLiteral("  状态位：bit0 Flag_Stop=%1 · bit1 电机被禁=%2 · bit2 本拍调 Set_pwm=%3\n")
+                       .arg(l.flagStop() ? 1 : 0)
+                       .arg(l.motorDisabled() ? 1 : 0)
+                       .arg(l.setPwmCalled() ? 1 : 0);
+            // 倾角保护（≥40° 关电机；现场常见，不是故障）
+            if (state.received(proto::up::kPose)) {
+                const double zz = echoes.contains(0x05) ? double(echoes.value(0x05)) : 0.5;
+                const bool tilt = domain::tiltProtectActive(state.pose().pitchDeg, zz);
+                out << QStringLiteral("  倾角 %1° − Zhongzhi %2° ⇒ %3\n")
+                           .arg(domain::units::number(state.pose().pitchDeg, 2))
+                           .arg(domain::units::number(zz, 2))
+                           .arg(tilt ? QStringLiteral("⚠ 超 ±40°，固件会关电机（现场常见，非故障）")
+                                     : QStringLiteral("✔ 在保护范围外"));
+            }
+        }
+    }
     const bool ok = s.framesOk > 0 && state.malformedFrames() == 0;
     out << (ok ? QStringLiteral("探测通过 ✅（真实串口→解帧→domain 全链路可用）\n")
                : QStringLiteral("探测未通过 ❌（没收到帧，或出现格式错帧）\n"));
@@ -501,6 +602,11 @@ int main(int argc, char *argv[])
     QCommandLineOption probeHb(QStringLiteral("probe-heartbeat"),
                                QStringLiteral("探测期间每 200 ms 发 0x1F 心跳（车不会因失联停车）"));
     parser.addOption(probeHb);
+    QCommandLineOption probeReadback(
+        QStringLiteral("probe-readback"),
+        QStringLiteral("探测时发一条 0x24 全量回读(0xFF) 并把 7 个实际生效值与定义表逐项对照"
+                       "（**只读命令**，不写参数、不动 Flash；会自动开启心跳）"));
+    parser.addOption(probeReadback);
     parser.process(app);
 
     if (parser.isSet(selftest)) {
@@ -508,7 +614,8 @@ int main(int argc, char *argv[])
     }
     if (parser.isSet(probe)) {
         return runProbe(parser.value(probe), parser.value(probeBaud).toInt(),
-                        parser.value(probeSeconds).toDouble(), parser.isSet(probeHb));
+                        parser.value(probeSeconds).toDouble(), parser.isSet(probeHb),
+                        parser.isSet(probeReadback));
     }
 
     // ---------------- 装配（依赖由外向内注入）----------------

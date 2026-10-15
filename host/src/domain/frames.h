@@ -125,6 +125,29 @@ struct LoopData {
     {
         return (moto1 != 0 && ccrA == 0) || (moto2 != 0 && ccrB == 0);
     }
+
+    /// "算了没执行"的**分级**判定 —— 必须区分"保护生效"与"真故障"
+    /// （依据 B 侧接口文档 §2.1 与 §4）：
+    ///   · **Protected**：`Flag_Stop` 或电机被禁（未使能/锁存）时 CCR=0 是**正常**的
+    ///     —— 现场"没使能电机"就长这样，报成红色故障会把正常状态说成 bug；
+    ///   · **Mismatch**：既没停车也没锁存，却 CCR=0 ⇒ 才是"算出来没执行"的真问题。
+    enum class Execution {
+        Ok = 0,
+        Protected,
+        Mismatch,
+    };
+    Execution executionState() const
+    {
+        if (!computedButNotExecuted()) {
+            return Execution::Ok;
+        }
+        return (flagStop() || motorDisabled()) ? Execution::Protected : Execution::Mismatch;
+    }
+
+    /// 两轮拿到**相反命令**而转向环没有出力 ⇒ 差速/极性 bug
+    /// （B 侧接口文档 §2.1 给 C 侧的三个"一眼定位故障"组合之一；
+    ///  厂商语义下 Turn=0 时两轮命令应当相同 —— 本机曾因此"原地疯狂转圈"）
+    bool differentialWithoutTurn() const { return turnPwm == 0 && moto1 != moto2; }
 };
 
 /// 0x24 PID 调参回读（N=6，协议 §4.2）—— **下行命令的上行回显**：
@@ -166,5 +189,42 @@ QString faultFlagsText(uint8_t flags);
 
 /// 固件版本字节 → "(月<<4)|日" 的可读形式，如 0xAF → "10-15"
 QString firmwareVersionText(uint8_t v);
+
+// ---- 固件侧的保护判据（上位机只**如实提示**，不代替固件判断）----
+
+/// 倾角保护门限（B 侧接口文档 §4：`|倾角 − Zhongzhi| > 40°` 关电机）
+constexpr double kTiltProtectDeg = 40.0;
+
+/// 是否处于"倾角超限保护"。★ 现场把车手动倾过去也会触发 —— 界面要提示但**不要当故障报警**。
+inline bool tiltProtectActive(double pitchDeg, double zhongzhiDeg)
+{
+    const double d = pitchDeg - zhongzhiDeg;
+    return (d > kTiltProtectDeg) || (d < -kTiltProtectDeg);
+}
+
+/// 低压保护：固件 < 11.1 V 持续 5 拍锁存、**≥ 11.6 V 才自动解除**（B 侧接口文档 §4）
+constexpr double kLowBatteryLockV = 11.10;
+constexpr double kLowBatteryReleaseV = 11.60;
+
+/// "有没有电池"的门槛 **6.00 V**（决策 60：分压悬空时 ADC 只有几毫伏~几伏噪声，
+/// 若直接按 <11.1 V 判低压，会得到"电池 0.x V"这种荒唐结论并把车锁死）。
+/// 真机实测：USB 供电（没接电池）时 `0x15` 报 **≈4.3 V** —— 固件按"无电池"处理，
+/// 上位机也必须同样处理，否则界面报红而车其实"只是没接电池"。
+constexpr double kBatteryPresenceV = 6.00;
+inline bool batteryPresent(double volt) { return volt > kBatteryPresenceV; }
+
+/// 0x11 的 PWM 字段按协议 §七 约定 4 是**千分比 0~1000**（0~100.0 %）。
+/// ★ 真机实测（2026-10-15）：固件当前上报的是**带符号的电机输出**（如 −1579），
+/// 明显超出该范围。上位机**不擅自截断**（那会掩盖一处协议偏差），而是标注出来。
+constexpr int kPwmPermilleLo = 0;
+constexpr int kPwmPermilleHi = 1000;
+inline bool pwmPermilleInProtocolRange(double percent) { return percent >= 0.0 && percent <= 100.0; }
+
+/// 字节/命令字的十六进制文本，统一成 `0x0A` 这种形式。
+///
+/// ★ 为什么要有这个小函数：各处原本各写一次 `QStringLiteral("0x%1").arg(v,2,16,...).toUpper()`，
+///   而 `.toUpper()` 会把前缀的 `x` 一起变成 `X`（显示成 `0X0A`）—— 与协议文档里的写法不一致，
+///   排查时"在日志里搜 0x0a 搜不到"就是这种小事造成的。
+QString hexByte(quint8 v);
 
 } // namespace domain

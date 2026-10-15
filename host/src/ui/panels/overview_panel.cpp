@@ -2,6 +2,7 @@
 
 #include "domain/alarm.h"
 #include "domain/units.h"
+#include "data/param_store.h"
 #include "io/link_manager.h"
 #include "ui/theme/theme.h"
 #include "ui/widgets/attitude_indicator.h"
@@ -43,8 +44,8 @@ QString linkCn(io::LinkKind kind)
 } // namespace
 
 OverviewPanel::OverviewPanel(domain::VehicleState *state, io::LinkManager *mgr,
-                             domain::AlarmEngine *alarm, QWidget *parent)
-    : QWidget(parent), m_state(state), m_mgr(mgr), m_alarm(alarm)
+                             domain::AlarmEngine *alarm, data::ParamStore *params, QWidget *parent)
+    : QWidget(parent), m_state(state), m_mgr(mgr), m_alarm(alarm), m_params(params)
 {
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(10, 8, 10, 8);
@@ -276,6 +277,8 @@ QGroupBox *OverviewPanel::buildBitsGroup()
     m_ledHeartbeat = new LedIndicator(QStringLiteral("心跳 0x1F"), g);
     m_ledSetPwm = new LedIndicator(QStringLiteral("Set_Pwm 已调用"), g);
     m_ledNotExec = new LedIndicator(QStringLiteral("算了没执行"), g);
+    m_ledTurnDiff = new LedIndicator(QStringLiteral("Turn=0 两轮不同"), g);
+    m_ledTiltProt = new LedIndicator(QStringLiteral("倾角保护 >40°"), g);
     m_ledFlagStop = new LedIndicator(QStringLiteral("Flag_Stop"), g);
     m_ledMotorDis = new LedIndicator(QStringLiteral("电机被禁"), g);
 
@@ -292,6 +295,10 @@ QGroupBox *OverviewPanel::buildBitsGroup()
         m_ledTick[i] = new LedIndicator(QString::fromUtf8(tickNames[i]), g);
         grid->addWidget(m_ledTick[i], 3, i);
     }
+    // 0x16 的"一眼定位故障"组合（B 侧接口文档 §2.1）单独放一行：它们是**判读结论**，
+    // 不是原始位，和上面的位域混在一起会让人分不清"这是位还是结论"。
+    grid->addWidget(m_ledTurnDiff, 4, 0, 1, 2);
+    grid->addWidget(m_ledTiltProt, 4, 2, 1, 2);
     return g;
 }
 
@@ -400,8 +407,16 @@ void OverviewPanel::refresh()
         const QString src = sourceText(proto::up::kMotion);
         m_left->setSub(src);
         m_right->setSub(src);
-        m_pwm->setSub(src);
         m_dist->setSub(src);
+        // ★ PWM 字段按协议是千分比 0~1000（0~100 %）。真机实测（2026-10-15）固件上报的是
+        //   **带符号的电机输出**（如 −1579）。**不擅自截断**（那会掩盖协议偏差），而是标注出来 —
+        //   这正是"监控系统要如实"这条纪律的实际用法。
+        if (domain::pwmPermilleInProtocolRange(m.pwmPercent)) {
+            m_pwm->setSub(src);
+        } else {
+            m_pwm->setSeverity(domain::Severity::Warn);
+            m_pwm->setSub(QStringLiteral("超出协议约定 0~100 %（真机实测为带符号电机输出，待 B 确认）"));
+        }
         m_avoid->setText(QStringLiteral("避障状态位：0b%1（协议未细化位定义，此处只原样显示）")
                              .arg(m.avoidFlags, 4, 2, QLatin1Char('0')));
     } else {
@@ -418,11 +433,17 @@ void OverviewPanel::refresh()
     if (st.batteryValid()) {
         m_volt->setValue(st.diag().batteryV);
         m_volt->setSeverity(st.batterySeverity());
-        m_volt->setSub(st.batteryLow()
-                           ? QStringLiteral("低于报警线 %1 V")
-                                 .arg(domain::units::number(domain::units::kLowBatteryV, 2))
-                           : QStringLiteral("正常（报警线 %1 V）")
-                                 .arg(domain::units::number(domain::units::kLowBatteryV, 2)));
+        if (st.batteryAbsent()) {
+            m_volt->setSub(QStringLiteral("低于“有电池”门槛 %1 V —— 按无电池处理（USB 供电？）")
+                               .arg(domain::units::number(domain::kBatteryPresenceV, 2)));
+        } else {
+            m_volt->setSub(st.batteryLow()
+                               ? QStringLiteral("低于报警线 %1 V（固件 ≥%2 V 才自动解除）")
+                                     .arg(domain::units::number(domain::units::kLowBatteryV, 2))
+                                     .arg(domain::units::number(domain::kLowBatteryReleaseV, 2))
+                               : QStringLiteral("正常（报警线 %1 V）")
+                                     .arg(domain::units::number(domain::units::kLowBatteryV, 2)));
+        }
     } else {
         m_volt->setInvalid(QStringLiteral("无数据（0x15 才有电压）"));
     }
@@ -612,10 +633,34 @@ void OverviewPanel::refresh()
     m_ledHeartbeat->setLevel(hbAge >= 0 && hbAge <= 500 ? LedIndicator::Level::Ok : LedIndicator::Level::Off,
                              hbAge >= 0 ? QStringLiteral("%1 ms").arg(hbAge) : QString());
     m_ledSetPwm->setLevel(loopOk && l.setPwmCalled() ? LedIndicator::Level::Ok : LedIndicator::Level::Off);
-    m_ledNotExec->setLevel(loopOk && l.computedButNotExecuted() ? LedIndicator::Level::Alarm
-                                                               : LedIndicator::Level::Off,
-                           loopOk && l.computedButNotExecuted() ? QStringLiteral("算了没执行！")
-                                                                : QString());
+    // "算了没执行"要**分级**（B 侧接口文档 §2.1/§4）：未使能/锁存时 CCR=0 是保护生效，属正常
+    const domain::LoopData::Execution exec =
+        loopOk ? l.executionState() : domain::LoopData::Execution::Ok;
+    m_ledNotExec->setLevel(exec == domain::LoopData::Execution::Mismatch ? LedIndicator::Level::Alarm
+                             : exec == domain::LoopData::Execution::Protected
+                                 ? LedIndicator::Level::Warn
+                                 : LedIndicator::Level::Off,
+                           exec == domain::LoopData::Execution::Mismatch
+                               ? QStringLiteral("算了没执行（未停车却 CCR=0）")
+                           : exec == domain::LoopData::Execution::Protected
+                               ? QStringLiteral("保护中，未驱动（Flag_Stop/锁存）")
+                               : QString());
+    // 0x16 判读组合（B 侧接口文档 §2.1）：差速/极性 bug 的**直接**判据
+    m_ledTurnDiff->setLevel(loopOk && l.differentialWithoutTurn() ? LedIndicator::Level::Alarm
+                                                                 : LedIndicator::Level::Off,
+                            loopOk && l.differentialWithoutTurn()
+                                ? QStringLiteral("两轮相反命令，转向环却没出力")
+                                : QString());
+    // 倾角保护：现场把车手动倾过去也会触发 ⇒ **不是故障**，用琥珀而不是红。
+    // Zhongzhi（平衡目标角）的当前值从参数账本取；账本没有时用 0.5（本机定稿值）
+    const double zhongzhi = (m_params != nullptr) ? m_params->current(0x05) : 0.5;
+    const bool tiltTrig = st.received(proto::up::kPose) &&
+                          domain::tiltProtectActive(st.pose().pitchDeg, zhongzhi);
+    m_ledTiltProt->setLevel(tiltTrig ? LedIndicator::Level::Warn : LedIndicator::Level::Off,
+                            tiltTrig ? QStringLiteral("|倾角−%1°| > %2°：固件会关电机（现场常见）")
+                                           .arg(domain::units::number(zhongzhi, 1))
+                                           .arg(domain::kTiltProtectDeg)
+                                     : QString());
     m_ledFlagStop->setLevel(loopOk && l.flagStop() ? LedIndicator::Level::Warn : LedIndicator::Level::Off);
     m_ledMotorDis->setLevel(loopOk && l.motorDisabled() ? LedIndicator::Level::Warn
                                                         : LedIndicator::Level::Off);

@@ -38,7 +38,10 @@ struct AlarmThresholds {
     double mq2Ppm = 30.0;   ///< MQ-2 报警阈值（ppm）
     double mq135Ppm = 50.0; ///< MQ-135 报警阈值（ppm）
     double lowBatteryV = units::kLowBatteryV;          ///< 低压报警线 11.10 V
-    double lowBatteryClearV = units::kLowBatteryV + 0.3; ///< 低压解除线 11.40 V（迟滞）
+    /// 低压解除线 **11.60 V**：与固件低压保护的自动解除门限一致（`frames.h` 的
+    /// `kLowBatteryReleaseV`，依据 B 侧接口文档 §4：< 11.1 V 持续 5 拍锁存、≥ 11.6 V 才解除）。
+    /// ★ 上位机若用更低的解除线（如 11.4），会出现"界面说已解除、车还锁着"。
+    double lowBatteryClearV = kLowBatteryReleaseV;
     int confirmFrames = 3; ///< 连续确认帧数（超限）
     int clearFrames = 3;   ///< 连续正常帧数（解除）
     qint64 linkLostMs = 500; ///< 失联判据（与固件安全停车一致，协议 §五）

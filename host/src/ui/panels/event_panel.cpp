@@ -117,8 +117,7 @@ void EventPanel::appendRow(const EventEntry &e)
     setCell(2, e.local ? QStringLiteral("本机")
                        : QString::fromUtf8(io::linkName(e.kind)),
             QColor(theme::kTextDim), false);
-    setCell(3, e.local ? QStringLiteral("—")
-                       : QStringLiteral("0x%1").arg(e.code, 2, 16, QLatin1Char('0')).toUpper(),
+    setCell(3, e.local ? QStringLiteral("—") : domain::hexByte(e.code),
             QColor(theme::kTextDim), true);
     setCell(4, e.title, color, false);
     setCell(5, e.detail, QColor(theme::kTextDim), false);

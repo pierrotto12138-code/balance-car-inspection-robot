@@ -143,11 +143,18 @@ void AlarmEngine::onFrameDecoded(const VehicleState &st, quint8 cmd)
         break;
     }
     case proto::up::kDiag: {
-        if (st.batteryValid()) {
-            // ★ 低压是"低了才坏"：badAt = 11.10 V，clearAt = 11.40 V（迟滞往上）
+        // ★ 先过"有没有电池"的门槛（6.00 V，决策 60；真机 USB 供电时 0x15 报 ≈4.3 V）：
+        //   没电池时报"低压锁存"是假报警，而且会把车真的锁住（固件也按无电池处理）。
+        if (st.batteryValid() && batteryPresent(st.diag().batteryV)) {
             judgeThresholdFor(kBatteryLow, QStringLiteral("电池低压"), Severity::Warn,
                               QStringLiteral("V"), m_th.lowBatteryV, m_th.lowBatteryClearV,
                               st.diag().batteryV, /*lowIsBad=*/true);
+        } else if (st.batteryAbsent()) {
+            // 曾经报过低压、现在电压掉到门槛以下（拔了电池）⇒ 按"无电池"处理，撤掉该告警
+            auto it = m_records.find(kBatteryLow);
+            if (it != m_records.end() && it->active) {
+                setActive(it.value(), false);
+            }
         }
         break;
     }

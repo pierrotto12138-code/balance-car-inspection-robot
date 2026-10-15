@@ -24,6 +24,8 @@
 #include <QElapsedTimer>
 #include <QWidget>
 
+#include <QStringList>
+
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;

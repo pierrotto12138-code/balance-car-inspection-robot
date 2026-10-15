@@ -98,7 +98,7 @@ void TunePanel::buildUi()
         m_table->setColumnWidth(kColRange, 110);
         m_table->setColumnWidth(kColDefault, 60);
         m_table->setColumnWidth(kColSource, 90);
-        m_table->setMinimumHeight(190);
+        m_table->setMinimumHeight(260); // 7 行参数要放得下（190 会把 0x06/0x07 截掉）
         vl->addWidget(m_table);
 
         auto *edit = new QHBoxLayout;
@@ -208,6 +208,19 @@ void TunePanel::buildUi()
         grid->addWidget(m_surveyHint, 3, 0, 1, 4);
         row2->addWidget(g, 2);
 
+        // ★ 默认值必须来自"账本里的巡检参数"（协议 §4.1 的默认：1000 ms / 30 / 50 / 连续 3 帧），
+        //   而不是各 spinbox 的最小值 —— 否则界面一打开就显示 100 ms / 0 ppm / 1 帧，
+        //   看着像"当前配置"，其实是控件的下限（这类"默认值即最小值"的展示会误导现场判断）。
+        const data::ParamStore::SurveyCfg cfg = m_params->surveyCfg();
+        m_periodMs->setValue(cfg.samplePeriodMs);
+        m_mq2Limit->setValue(cfg.mq2Ppm);
+        m_mq135Limit->setValue(cfg.mq135Ppm);
+        m_adaptive->setChecked(cfg.adaptive);
+        m_compensation->setChecked(cfg.compensation);
+        m_confirmFrames->setValue(cfg.confirmFrames);
+        m_surveyHint->setText(QStringLiteral("默认值来自协议 §4.1（1000 ms / 30 / 50 ppm / 连续 3 帧）。"
+                                             "0x23 **掉电不保存**，重启回固件里的上电值。"));
+
         connect(btnSendSurvey, &QPushButton::clicked, this, &TunePanel::sendSurveyCfg);
     }
 
@@ -296,8 +309,7 @@ void TunePanel::rebuildTable()
             item->setText(text);
             item->setForeground(color);
         };
-        set(kColId, QStringLiteral("0x%1").arg(p.id, 2, 16, QLatin1Char('0')).toUpper(),
-            QColor(theme::kTextDim), true);
+        set(kColId, domain::hexByte(p.id), QColor(theme::kTextDim), true);
         set(kColName, QString::fromUtf8(p.name), QColor(theme::kText), false);
         set(kColVar, QString::fromUtf8(p.baseVar), QColor(theme::kTextDim), true);
         // 未回读时显示默认值但颜色变灰 —— "默认值"与"板子上的真值"必须能区分
@@ -310,6 +322,13 @@ void TunePanel::rebuildTable()
                              : QStringLiteral("默认值"),
             have && confirmed ? QColor(theme::kOk) : QColor(theme::kWarn), false);
         set(kColDesc, QString::fromUtf8(p.desc), QColor(theme::kTextDim), false);
+        // 说明列会被列宽截断 —— 挂完整文本到 tooltip（截断的说明等于没有说明）
+        if (auto *desc = m_table->item(r, kColDesc)) {
+            desc->setToolTip(QString::fromUtf8(p.desc));
+        }
+        if (auto *var = m_table->item(r, kColVar)) {
+            var->setToolTip(QStringLiteral("固件里的变量名：%1").arg(QString::fromUtf8(p.baseVar)));
+        }
     }
     updateSelectedRow();
 }
@@ -328,13 +347,12 @@ void TunePanel::updateSelectedRow()
     if (p == nullptr) {
         return;
     }
-    m_selectedName->setText(QStringLiteral("%1（0x%2）")
-                                .arg(QString::fromUtf8(p->name))
-                                .arg(id, 2, 16, QLatin1Char('0'))
-                                .toUpper());
+    m_selectedName->setText(QStringLiteral("%1（%2）")
+                                .arg(QString::fromUtf8(p->name), domain::hexByte(id)));
     m_valueEdit->setRange(p->lo, p->hi); // 输入框直接按协议范围限制，从源头堵住越界
     m_valueEdit->setValue(m_params->current(id));
-    m_valueEdit->setSingleStep(std::max(0.01, (p->hi - p->lo) / 100.0));
+    // Zhongzhi 是"平衡目标角（重心补偿）"，单位 °、步进 0.1（B 侧接口文档 §3.2）
+    m_valueEdit->setSingleStep(id == 0x05 ? 0.1 : std::max(0.01, (p->hi - p->lo) / 100.0));
     m_btnSend->setEnabled(true);
     m_rangeHint->setText(QStringLiteral("允许范围 %1 ~ %2（输入框已按此限制；协议 §3.8 规定越界固件会"
                                         "拒绝并保持原值）· %3")
@@ -521,4 +539,28 @@ void TunePanel::refresh()
     m_execPlot->replot();
     // 表格里"待回读/已回读"会随回读更新，10 Hz 刷一次足够（不是每帧重绘）
     rebuildTable();
+
+    // 0x16 的三个"一眼定位故障"组合（B 侧接口文档 §2.1）—— 调参页把它当"判读结论"常显
+    if (m_state->received(proto::up::kLoop)) {
+        const domain::LoopData &l = m_state->loop();
+        QStringList parts;
+        parts << (l.differentialWithoutTurn()
+                      ? QStringLiteral("⚠ Turn=0 却两轮命令不同（差速/极性 bug）")
+                      : QStringLiteral("✔ Turn=0 时两轮命令一致"));
+        // "算了没执行"分级：未使能/锁存时 CCR=0 是**保护生效**（现场"没使能电机"就长这样）
+        const domain::LoopData::Execution exec = l.executionState();
+        parts << (exec == domain::LoopData::Execution::Mismatch
+                      ? QStringLiteral("⚠ 算了没执行（未停车却 CCR=0）")
+                  : exec == domain::LoopData::Execution::Protected
+                      ? QStringLiteral("保护中，未驱动（正常）")
+                      : QStringLiteral("✔ CCR 与 Moto 一致"));
+        parts << (l.setPwmCalled() ? QStringLiteral("✔ 本拍调用了 Set_pwm")
+                                   : QStringLiteral("⚠ 本拍未调用 Set_pwm（保护中？）"));
+        parts << (l.flagStop() ? QStringLiteral("Flag_Stop=1（已停车）") : QStringLiteral("Flag_Stop=0"));
+        parts << (l.motorDisabled() ? QStringLiteral("电机被禁（锁存）") : QStringLiteral("电机使能中"));
+        m_lastAction->setText(QStringLiteral("固件 %1/%2 · %3")
+                                  .arg(domain::hexByte(l.fwVersion),
+                                       domain::firmwareVersionText(l.fwVersion),
+                                       parts.join(QStringLiteral(" ｜ "))));
+    }
 }

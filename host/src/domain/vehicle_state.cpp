@@ -78,12 +78,20 @@ bool VehicleState::taskTickAlive(int index) const
 
 bool VehicleState::batteryLow() const
 {
-    return batteryValid() && m_diag.batteryV <= units::kLowBatteryV;
+    // ★ 必须先过"有没有电池"的门槛（决策 60）：USB 供电/分压悬空时 0x15 只报 ≈4.3 V，
+    //   固件按"无电池"处理；上位机若直接判 <11.1 V，界面会报红而车只是没接电池。
+    return batteryValid() && batteryPresent(m_diag.batteryV) &&
+           m_diag.batteryV <= units::kLowBatteryV;
+}
+
+bool VehicleState::batteryAbsent() const
+{
+    return batteryValid() && !batteryPresent(m_diag.batteryV);
 }
 
 Severity VehicleState::batterySeverity() const
 {
-    if (!batteryValid()) {
+    if (!batteryValid() || batteryAbsent()) {
         return Severity::Unknown;
     }
     if (m_diag.batteryV <= 10.80) {
@@ -143,6 +151,10 @@ QString VehicleState::safetySummary() const
     }
     if (alarmActive()) {
         return QStringLiteral("⚠ 报警中：%1").arg(faultText());
+    }
+    if (batteryAbsent()) {
+        return QStringLiteral("无电池（%1 V < %2 V 门槛 —— 固件按无电池处理，不是低压报警）")
+            .arg(units::number(m_diag.batteryV, 2), units::number(kBatteryPresenceV, 2));
     }
     if (batteryLow()) {
         return QStringLiteral("⚠ 电池低压 %1 V（报警线 %2 V）")

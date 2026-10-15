@@ -95,7 +95,13 @@ private slots:
         QVERIFY2(raw.startsWith("\xEF\xBB\xBF"), "CSV 必须以 UTF-8 BOM 开头（Excel 中文表头）");
         const QStringList lines = splitLines(raw);
         QVERIFY(lines.size() >= 9); // 1 表头 + 8 数据
-        const QStringList header = splitCsv(lines.first().mid(1)); // 去掉 BOM
+        // 表头首字符可能是 BOM（视 Qt 是否剥离而定）——两种情形都要能正确处理，
+        // 否则会得到"地时间ms"这种让人摸不着头脑的失败（本项目实际踩过一次）。
+        QString headerLine = lines.first();
+        if (!headerLine.isEmpty() && headerLine.at(0) == QChar(0xFEFF)) {
+            headerLine.remove(0, 1);
+        }
+        const QStringList header = splitCsv(headerLine);
         QCOMPARE(header.size(), 42);
         QCOMPARE(header.first(), QStringLiteral("本地时间ms"));
         QCOMPARE(header.last(), QStringLiteral("原始帧HEX"));
@@ -202,11 +208,36 @@ private slots:
     void paramStore_definitionMatchesProtocol()
     {
         QCOMPARE(pidParams().size(), 7);
-        QCOMPARE(pidParamInfo(0x07)->hi, 10.0);   // 转向环 D 上界 10（协议 §3.8）
+        QCOMPARE(pidParamInfo(0x07)->hi, 10.0);   // 转向环 D 上界 10
         QCOMPARE(pidParamInfo(0x04)->hi, 0.82);   // 速度环 I 上界 0.82
         QCOMPARE(pidParamInfo(0x01)->defaultValue, 300.0);
         QVERIFY(pidParamInfo(0x7E) == nullptr);
         QCOMPARE(pidParamName(0xFF), QStringLiteral("全量回读"));
+        // B 侧接口文档 §3.2：Zhongzhi 是"平衡目标角（重心补偿）"，默认 0.5
+        QCOMPARE(pidParamInfo(0x05)->defaultValue, 0.5);
+        QVERIFY(QString::fromUtf8(pidParamInfo(0x05)->name).contains(QStringLiteral("重心")));
+    }
+
+    void paramStore_allowsNegativeValues()
+    {
+        // ★★ 回归守卫（B 侧接口文档 §3.1/§5 第 2 条点名的坑）：
+        //   本机电机/编码器符号与厂商约定相反，**负增益是正确的出厂值** ——
+        //   前端校验若只允许 ≥0，会把 -80 这种正确值在界面上直接挡掉，
+        //   而现象是"调参界面上不让填"，极易被当成界面 bug 而不是"校验写错了"。
+        QString why;
+        QCOMPARE(int(checkPidValue(0x03, -80.0, &why)), int(ParamCheck::Ok));
+        QCOMPARE(int(checkPidValue(0x04, -0.4, &why)), int(ParamCheck::Ok));
+        QCOMPARE(int(checkPidValue(0x05, 0.5, &why)), int(ParamCheck::Ok));
+        QCOMPARE(int(checkPidValue(0x06, -52.0, &why)), int(ParamCheck::Ok));
+        QCOMPARE(int(checkPidValue(0x07, -0.5, &why)), int(ParamCheck::Ok));
+        // 本机定稿的七个出厂值必须**全部通过**校验（否则界面一打开就把正确值判成非法）
+        const double factory[7] = {300.0, 1.0, -80.0, -0.4, 0.5, 0.0, 0.0};
+        for (const PidParamInfo &p : pidParams()) {
+            QCOMPARE(int(checkPidValue(p.id, factory[p.id - 1], &why)), int(ParamCheck::Ok));
+        }
+        // 仍然要挡住真正越界的（允许负值 ≠ 不设界）
+        QCOMPARE(int(checkPidValue(0x03, -501.0, &why)), int(ParamCheck::OutOfRange));
+        QCOMPARE(int(checkPidValue(0x04, -1.0, &why)), int(ParamCheck::OutOfRange));
     }
 
     void paramStore_rejectsOutOfRangeAndNaN()
@@ -215,7 +246,6 @@ private slots:
         QCOMPARE(int(checkPidValue(0x01, 300.0, &why)), int(ParamCheck::Ok));
         QCOMPARE(int(checkPidValue(0x01, 1501.0, &why)), int(ParamCheck::OutOfRange));
         QVERIFY(why.contains(QStringLiteral("1501")));
-        QCOMPARE(int(checkPidValue(0x06, -1.0, &why)), int(ParamCheck::OutOfRange));
         QCOMPARE(int(checkPidValue(0x05, -20.0, &why)), int(ParamCheck::Ok));
         QCOMPARE(int(checkPidValue(0x05, -21.0, &why)), int(ParamCheck::OutOfRange));
         QCOMPARE(int(checkPidValue(0x01, std::nan(""), &why)), int(ParamCheck::NotANumber));
@@ -228,8 +258,9 @@ private slots:
         QSignalSpy updated(&st, &ParamStore::valueUpdated);
         QSignalSpy mismatch(&st, &ParamStore::mismatch);
 
-        // 未回读前：显示默认值，但"未确认"
-        QCOMPARE(st.current(0x06), 52.0);
+        // 未回读前：显示定义里的默认值（★ 本机定稿值，不是厂商默认值），但"未确认"
+        QCOMPARE(st.current(0x06), 0.0); // Turn_Kp 本机调试期定稿 0（B 侧接口文档 §3.1）
+        QCOMPARE(st.current(0x03), -80.0); // ★ 负值是本机正确值
         QVERIFY(!st.readbackReceived(0x06));
         QVERIFY(st.lastRequestConfirmed(0x06)); // 没下发过 ⇒ 不构成不一致
 
@@ -252,11 +283,14 @@ private slots:
         QCOMPARE(args.at(2).toDouble(), 40.0);
         QVERIFY(updated.count() >= 2);
 
-        // 快照历史：下发/回读都要留痕
+        // 快照历史：下发/回读都要留痕（顺序：下发40 / 回读40 / 下发60 / 回读40）
         QVERIFY(st.history().size() >= 4);
-        QCOMPARE(st.history().first().source, QStringLiteral("下发"));
+        QCOMPARE(st.history().at(0).source, QStringLiteral("下发"));
         QCOMPARE(st.history().at(1).source, QStringLiteral("回读"));
-        QVERIFY(!st.history().at(1).ok); // 第二次回读不一致
+        QVERIFY(st.history().at(1).ok); // 第一次回读与下发一致
+        QCOMPARE(st.history().at(2).source, QStringLiteral("下发"));
+        QCOMPARE(st.history().at(3).source, QStringLiteral("回读"));
+        QVERIFY(!st.history().at(3).ok); // 第二次回读与下发不一致 → 必须留痕为"失败"
     }
 
     void paramStore_acksAndSurveyCfg()

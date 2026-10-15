@@ -77,7 +77,7 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain
     m_nav->addItem(QStringLiteral("⑦ 协议自检"));
 
     m_stack = new QStackedWidget(central);
-    m_overview = new OverviewPanel(m_state, m_mgr, m_alarm, m_stack);
+    m_overview = new OverviewPanel(m_state, m_mgr, m_alarm, m_params, m_stack);
     m_patrol = new PatrolPanel(m_state, m_mgr, m_alarm, m_keepalive, m_log, m_stack);
     m_curves = new CurvePanel(m_state, m_mgr, m_alarm, m_stack);
     m_tune = new TunePanel(m_state, m_mgr, m_params, m_log, m_stack);
@@ -147,6 +147,7 @@ void MainWindow::buildStatusBar()
     m_stAlarm = statusLabel();
     m_stKeepalive = statusLabel();
     m_stRecord = statusLabel();
+    m_stFw = statusLabel();
     m_stFrames = statusLabel();
     // 假源水印放在最左边：**演示数据必须一眼可辨**（计划 §11.2 第 10 条）
     statusBar()->addWidget(m_stDemo);
@@ -157,6 +158,7 @@ void MainWindow::buildStatusBar()
     statusBar()->addPermanentWidget(m_stSafety);
     statusBar()->addPermanentWidget(m_stKeepalive);
     statusBar()->addPermanentWidget(m_stRecord);
+    statusBar()->addPermanentWidget(m_stFw);
     statusBar()->addPermanentWidget(m_stFrames);
 }
 
@@ -399,6 +401,21 @@ void MainWindow::refreshStatusBar()
                                                               : sev == domain::Severity::Warn ? theme::kWarn
                                                               : sev == domain::Severity::Ok   ? theme::kOk
                                                                                              : theme::kOffline)));
+
+    // ---- 固件版本（0x16 偏移 19）：B 侧接口文档 §1 点名"建议界面直接显示" ——
+    //      "当前现象与预期版本不符"曾是无法定位的争议，一读版本号即可排除。
+    if (m_state->received(proto::up::kLoop)) {
+        const quint8 fw = m_state->loop().fwVersion;
+        m_stFw->setText(QStringLiteral("固件 %1/%2").arg(domain::hexByte(fw),
+                                                        domain::firmwareVersionText(fw)));
+        m_stFw->setStyleSheet(QStringLiteral("color:%1;")
+                                  .arg(QString::fromLatin1(fw == 0 ? theme::kWarn : theme::kTextDim)));
+        m_stFw->setToolTip(QStringLiteral("0x16 偏移 19 = (月<<4)|日。0x00 表示固件没上报版本字节"
+                                          "（烧的是旧版？）"));
+    } else {
+        m_stFw->setText(QStringLiteral("固件 --"));
+        m_stFw->setStyleSheet(QStringLiteral("color:%1;").arg(QString::fromLatin1(theme::kOffline)));
+    }
 
     // ---- 录制状态：现场最怕"以为在录、其实没录"，所以常显 ----
     if (m_recorder != nullptr) {

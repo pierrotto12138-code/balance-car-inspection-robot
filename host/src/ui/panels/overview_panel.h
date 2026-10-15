@@ -33,6 +33,10 @@ namespace io {
 class LinkManager;
 }
 
+namespace data {
+class ParamStore;
+}
+
 namespace domain {
 class AlarmEngine;
 }
@@ -41,8 +45,9 @@ class OverviewPanel : public QWidget
 {
     Q_OBJECT
 public:
+    /// `params` 可为空：它只用于"倾角保护"判读（需要 Zhongzhi 的当前值）
     OverviewPanel(domain::VehicleState *state, io::LinkManager *mgr, domain::AlarmEngine *alarm,
-                  QWidget *parent = nullptr);
+                  data::ParamStore *params = nullptr, QWidget *parent = nullptr);
 
 public slots:
     /// 20 Hz 拉取刷新（计划 §五：UI 以 20 Hz 定时刷新，而不是每来一帧就重绘）
@@ -72,6 +77,7 @@ private:
     domain::VehicleState *m_state = nullptr;
     io::LinkManager *m_mgr = nullptr;
     domain::AlarmEngine *m_alarm = nullptr;
+    data::ParamStore *m_params = nullptr;
     QTimer *m_timer = nullptr;
 
     QLabel *m_banner = nullptr;
@@ -140,6 +146,8 @@ private:
     LedIndicator *m_ledHeartbeat = nullptr;
     LedIndicator *m_ledSetPwm = nullptr;
     LedIndicator *m_ledNotExec = nullptr;
+    LedIndicator *m_ledTurnDiff = nullptr;
+    LedIndicator *m_ledTiltProt = nullptr;
     LedIndicator *m_ledFlagStop = nullptr;
     LedIndicator *m_ledMotorDis = nullptr;
     LedIndicator *m_ledTick[4] = {nullptr, nullptr, nullptr, nullptr};

@@ -316,6 +316,12 @@ QString faultFlagsText(uint8_t flags)
     return parts.join(QLatin1Char('|'));
 }
 
+QString hexByte(quint8 v)
+{
+    return QStringLiteral("0x%1").arg(v, 2, 16, QLatin1Char('0')).toUpper().replace(
+        QStringLiteral("0X"), QStringLiteral("0x"));
+}
+
 QString firmwareVersionText(uint8_t v)
 {
     if (v == 0) {

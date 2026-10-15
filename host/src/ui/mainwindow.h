@@ -107,6 +107,7 @@ private:
     QLabel *m_stAlarm = nullptr;
     QLabel *m_stKeepalive = nullptr;
     QLabel *m_stRecord = nullptr;
+    QLabel *m_stFw = nullptr;
     QLabel *m_stFrames = nullptr;
     QLabel *m_stDemo = nullptr;
 

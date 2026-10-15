@@ -87,6 +87,8 @@ public:
     // ---- 电源与环境判定 ----
     bool batteryValid() const { return received(proto::up::kDiag); }
     bool batteryLow() const;
+    /// 电压低于"有电池"门槛（6 V）——固件与上位机都按"无电池/分压悬空"处理，**不是低压报警**
+    bool batteryAbsent() const;
     Severity batterySeverity() const;
 
     // ---- 安全状态（P1 最小集：报警位 + 安全锁存 + 低压 + 失联）----

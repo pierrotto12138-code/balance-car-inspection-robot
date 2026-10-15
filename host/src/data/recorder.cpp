@@ -195,7 +195,7 @@ void CsvRecorder::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data)
                          static_cast<int>(frameBytes.size()));
 
     const QString link = QString::fromUtf8(io::linkName(kind));
-    const QString cmdText = QStringLiteral("0x%1").arg(cmd, 2, 16, QLatin1Char('0')).toUpper();
+    const QString cmdText = domain::hexByte(cmd);
     const QString name = QString::fromUtf8(domain::cmd::name(cmd));
     QStringList cols = emptyDataCols();
 
@@ -272,7 +272,7 @@ void CsvRecorder::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data)
     case proto::up::kEvent: {
         domain::EventData v;
         if (domain::decodeEvent(data, v)) {
-            cols[EventCode] = QStringLiteral("0x%1").arg(int(v.code), 2, 16, QLatin1Char('0')).toUpper();
+            cols[EventCode] = domain::hexByte(static_cast<quint8>(v.code));
             cols[Content] = QString::fromUtf8(domain::eventName(v.code));
             cols[Note] = QStringLiteral("机器人时间戳 %1 ms").arg(v.timestampMs);
         }
@@ -291,8 +291,7 @@ void CsvRecorder::onEvent(const data::EventEntry &e)
         return;
     }
     QStringList cols = emptyDataCols();
-    cols[EventCode] = e.local ? QStringLiteral("本机")
-                              : QStringLiteral("0x%1").arg(e.code, 2, 16, QLatin1Char('0')).toUpper();
+    cols[EventCode] = e.local ? QStringLiteral("本机") : domain::hexByte(e.code);
     cols[Content] = e.title;
     cols[Note] = e.detail;
     writeRow(e.local ? QStringLiteral("本机") : QString::fromUtf8(io::linkName(e.kind)),

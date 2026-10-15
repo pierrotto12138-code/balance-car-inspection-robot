@@ -68,7 +68,6 @@ private slots:
         OverviewPanel panel(&st, &mgr, &alarm);
         panel.show();
         QVERIFY(QTest::qWaitForWindowExposed(&panel) || panel.isVisible());
-
         panel.refresh();
         QVERIFY2(panel.bannerText().contains(QStringLiteral("等待数据")),
                  qPrintable(QStringLiteral("空数据横幅异常：%1").arg(panel.bannerText())));
