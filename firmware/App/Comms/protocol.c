@@ -385,6 +385,44 @@ int Proto_Unpack_Event(const uint8_t *in, uint16_t len, uint8_t *code, uint32_t 
 
 /* ------------------------------------------------------------------ 0x14 环境与气体 */
 
+/* ------------------------------------------------------------------ 0x15 诊断（v1.2 新增） */
+
+uint16_t Proto_Pack_Diag(const ProtoDiag *s, uint8_t *out)
+{
+	Proto_PutU16(&out[0], s->voltageX100);
+	out[2] = s->flagPage;
+	out[3] = s->flagShow;
+	out[4] = s->wayAngle;
+	out[5] = s->statusBits;
+	Proto_PutU16(&out[6], s->heapFreeKb);
+	Proto_PutU32(&out[8], s->oledWrites);
+	out[12] = s->ticks[0];
+	out[13] = s->ticks[1];
+	out[14] = s->ticks[2];
+	out[15] = s->ticks[3];
+	return 16;
+}
+
+int Proto_Unpack_Diag(const uint8_t *in, uint16_t len, ProtoDiag *s)
+{
+	if (len != 16)
+	{
+		return -1;
+	}
+	s->voltageX100 = Proto_GetU16(&in[0]);
+	s->flagPage = in[2];
+	s->flagShow = in[3];
+	s->wayAngle = in[4];
+	s->statusBits = in[5];
+	s->heapFreeKb = Proto_GetU16(&in[6]);
+	s->oledWrites = Proto_GetU32(&in[8]);
+	s->ticks[0] = in[12];
+	s->ticks[1] = in[13];
+	s->ticks[2] = in[14];
+	s->ticks[3] = in[15];
+	return 0;
+}
+
 uint16_t Proto_Pack_EnvGas(const ProtoEnvGas *s, uint8_t *out)
 {
 	Proto_PutU16(&out[0], s->mq2Raw);

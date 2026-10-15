@@ -37,6 +37,7 @@ HEAD0, HEAD1 = 0xAA, 0x55
 
 CMD_POSE, CMD_MOTION, CMD_TASK, CMD_EVENT = 0x10, 0x11, 0x12, 0x13
 CMD_ENV, CMD_HEARTBEAT = 0x14, 0x1F
+CMD_DIAG = 0x15        # v1.2 诊断帧：任务 tick / OLED 写计数 / 电压 / 页号（联调用）
 CMD_MOTION_DOWN, CMD_TASK_DOWN, CMD_MODE_DOWN, CMD_SURVEY, CMD_PID, CMD_ESTOP = \
     0x20, 0x21, 0x22, 0x23, 0x24, 0x2F
 
@@ -174,6 +175,14 @@ def describe(f):
                 "gearName": GEAR_NAMES.get(d[13], "?")}
     if c == CMD_HEARTBEAT:
         return {"kind": "heartbeat"}
+    if c == CMD_DIAG and len(d) >= 16:
+        # ★ v1.2 诊断帧：把"屏幕有没有在刷、任务还活着没有、电压多少"变成可测数据
+        return {"kind": "diag",
+                "voltageX100": u16(d, 0),
+                "flagPage": d[2], "flagShow": d[3], "wayAngle": d[4], "statusBits": d[5],
+                "heapFreeKb": u16(d, 6),
+                "oledWrites": struct.unpack_from("<I", d, 8)[0],
+                "ticks": [d[12], d[13], d[14], d[15]]}
     if c == CMD_PID and len(d) >= 6:
         return {"kind": "pid", "id": d[0], "value": f32_at(d, 2),
                 "name": PID_NAMES.get(d[0], "0x%02X" % d[0])}
@@ -246,6 +255,20 @@ def open_port(port, baud, timeout=0.05):
         raise SystemExit(2)
     import serial
     ser = serial.Serial(port, baud, timeout=timeout)
+
+    # ★ 必须显式驱动 DTR/RTS（实测踩过，见 AGENTS 陷阱 33）：
+    #   本板 CH340G 的自动下载电路把 **DTR 接了复位、RTS 接了 BOOT0**
+    #   （厂商 ISP 工具的原文：『DTR 的低电平复位，RTS 高电平进 BootLoader』）。
+    #   而串口一旦被打开，驱动默认把两者都拉高 → RTS 高 = MCU 被按在 **BootLoader** 里，
+    #   现象是"端口能打开、但一个字节都收不到"，极易误判成"没烧进去/线接错"。
+    #   运行态：DTR = 高（释放复位）、RTS = 低（不进 BootLoader）。
+    try:
+        ser.dtr = True
+        ser.rts = False
+        time.sleep(0.15)          # 等复位释放、应用起来
+    except Exception:             # 某些虚拟串口不支持这两条线，忽略即可
+        pass
+
     ser.reset_input_buffer()
     return ser
 
@@ -471,6 +494,39 @@ def monitor(link, seconds):
                 elif k == "task":
                     print(f"  TASK stage={d['phaseName']} task={d['task']} prog={d['progress']}% "
                           f"wp={d['waypoint']} fault=0x{d['fault']:02X}")
+                elif k == "diag":
+                    # ★ 诊断帧：按秒差分算出"OLED 写速率"与"各任务 tick 速率"。
+                    #   这两个数能客观区分三种情况（联调时最关键）：
+                    #     · tick 不涨          → 该任务死了（不是屏幕的问题）
+                    #     · tick 涨、OLED 不涨 → 根本没在刷屏
+                    #     · 两者都涨           → 在刷屏，但显示不对（驱动/接线/模块/供电）
+                    nowt = time.time()
+                    flags = []
+                    if d["statusBits"] & 0x01:
+                        flags.append("报警")
+                    if d["statusBits"] & 0x02:
+                        flags.append("已锁存")
+                    if d["statusBits"] & 0x04:
+                        flags.append("DHT11有效")
+                    if d["statusBits"] & 0x08:
+                        flags.append("蓝牙有收数")
+                    page = {0: "厂商页", 1: "环境气体页", 2: "巡检通信页"}.get(d["flagPage"],
+                                                                              f"?{d['flagPage']}")
+                    prev = last.get("diag")
+                    rate = ""
+                    if prev:
+                        dt = max(0.2, nowt - prev[0])
+                        dw = (d["oledWrites"] - prev[1]) & 0xFFFFFFFF
+                        dtk = [((d["ticks"][i] - prev[2][i]) & 0xFF) / dt for i in range(4)]
+                        rate = (f"  OLED写 {dw / dt:8.0f}/s   "
+                                f"tick/s 通信{dtk[0]:4.1f} 气体{dtk[1]:4.1f} "
+                                f"状态{dtk[2]:4.1f} 界面{dtk[3]:4.1f}")
+                    last["diag"] = (nowt, d["oledWrites"], list(d["ticks"]))
+                    print(f"  DIAG 电压 {d['voltageX100'] / 100:5.2f}V  当前页={page}  "
+                          f"Flag_Show={d['flagShow']} 算法={d['wayAngle']} 堆={d['heapFreeKb']}KB"
+                          f"{('  ' + '/'.join(flags)) if flags else ''}")
+                    if rate:
+                        print(f"       {rate}")
                 elif k == "event":
                     print(f"  ⚠️ EVENT code=0x{d['code']:02X} ts={d['tsMs']}ms")
                 elif k == "heartbeat":

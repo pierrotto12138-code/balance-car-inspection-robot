@@ -7,6 +7,8 @@
 我的淘宝小店：http://shop114407458.taobao.com/
 **************************************************************************/
 u8 OLED_GRAM[128][8];
+/* ★ B 2026-10-13：OLED 累计写入字节数（0x15 诊断帧上报，见 OLED_WR_Byte 处的说明）*/
+volatile uint32_t g_oledWrites = 0;
 void OLED_Refresh_Gram(void)
 {
 	u8 i,n;
@@ -25,6 +27,11 @@ void OLED_Refresh_Gram(void)
 void OLED_WR_Byte(u8 dat,u8 cmd)
 {
 	u8 i;
+	/* ★ B 2026-10-13：累计写入计数，供 0x15 诊断帧上报。
+	   为什么值得加：OLED 是现场唯一的可视化输出，而"屏幕有没有在被刷"在协议里本来
+	   完全看不到 —— 联调时只能靠人眼看屏。有了这个计数，工具端按秒差分即可客观区分
+	   "根本没画"（计数不涨）与"画了但屏上不对"（计数在涨）——这两种故障的排查方向完全不同。*/
+	g_oledWrites++;
 	if(cmd)
 		OLED_RS_Set();
 	else

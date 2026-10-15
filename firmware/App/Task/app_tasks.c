@@ -22,6 +22,7 @@
 #include "pages.h"
 #include "odom.h"
 #include "show.h"
+#include "oled.h"      /* g_oledWrites：0x15 诊断帧里上报"OLED 有没有在被写" */
 
 /* ============================================================================
  * 厂商全局量（定义在 main.c / control.c）—— 只读，用于上报
@@ -93,6 +94,9 @@ static PatrolState    s_patrol;
 static ProtoDecoder   s_dec[COMM_LINK_COUNT];  /* 每条链路一个解帧器（状态互不干扰）*/
 static ProtoSurveyCfg s_cfg;
 static volatile uint8_t s_gear = PROTO_GEAR_WARMUP;
+/* 低压"连续确认"计数器（2026-10-13 修正误触发；详见 state_task 里的说明）。
+   为什么要连续确认：分压网络受电机噪声影响，单拍抖动不该直接触发安全停车。*/
+static uint8_t        s_lowBatCount = 0;
 static volatile uint8_t s_tuningMode = 0;
 static uint32_t       s_lastDhtMs = 0;
 static uint32_t       s_lastSampleMs = 0;
@@ -381,6 +385,31 @@ static void comm_task(void *arg)
 					Proto_Pack_EnvGas(&env, payload);
 					send_frame_all(PROTO_UP_ENV_GAS, payload, 16);
 				}
+
+				/* ★ 同一个 1 Hz 节拍发一帧诊断（0x15, v1.2）——
+				   把"屏幕有没有在刷、任务还活着没有、电压多少"变成**可远程测量**的数据。
+				   它是新增命令，**不改任何已有帧**，老工具忽略即可。*/
+				{
+					ProtoDiag dg;
+					BoardRawState bs2;
+					Board_ReadRaw(&bs2);
+					dg.voltageX100 = (uint16_t)(bs2.voltage > 0 ? bs2.voltage : 0);
+					dg.flagPage = (uint8_t)Flag_Page;
+					dg.flagShow = bs2.showFlag;
+					dg.wayAngle = (uint8_t)Way_Angle;
+					dg.statusBits = (uint8_t)(((s_mq2.alarm || s_mq135.alarm) ? 0x01u : 0u) |
+											  (s_patrol.safetyStop ? 0x02u : 0u) |
+											  (s_dhtValid ? 0x04u : 0u) |
+											  ((CommLink_RxBytes(COMM_LINK_BT) > 0) ? 0x08u : 0u));
+					dg.heapFreeKb = (uint16_t)(xPortGetFreeHeapSize() / 1024u);
+					dg.oledWrites = g_oledWrites;
+					dg.ticks[0] = (uint8_t)(s_ticks[APP_TASK_COMM] & 0xFFu);
+					dg.ticks[1] = (uint8_t)(s_ticks[APP_TASK_GAS] & 0xFFu);
+					dg.ticks[2] = (uint8_t)(s_ticks[APP_TASK_STATE] & 0xFFu);
+					dg.ticks[3] = (uint8_t)(s_ticks[APP_TASK_UI] & 0xFFu);
+					Proto_Pack_Diag(&dg, payload);
+					send_frame_all(PROTO_UP_DIAG, payload, 16);
+				}
 			}
 		}
 
@@ -486,7 +515,36 @@ static void state_task(void *arg)
 		in.calibrating = (s_calibDone == 0) ? 1 : 0;   /* ★ 由 GasTask 的标定进度决定 */
 		in.gasAlarm = (uint8_t)((s_mq2.alarm || s_mq135.alarm) ? 1 : 0);
 		in.gasAnyOver = (uint8_t)((s_mq2.overCount > 0 || s_mq135.overCount > 0) ? 1 : 0);
-		in.hwFault = (uint8_t)((bs.voltage > 0 && bs.voltage < 1110) ? 1 : 0);
+
+		/* ★ 低压判据修正（2026-10-13，真机联调发现）：
+		   原判据是 `voltage > 0 && voltage < 1110` —— 本意是"有电池才判低压"，
+		   但**分压网络悬空时会拾到几毫伏的噪声**（读数为 20~300，即 0.2~3 V），
+		   于是被当成"电池只有 0.x V，低于 11.1 V" → **误触发硬件故障 → 安全停车锁存** →
+		   `Turn_Off()` 恒返回 1 → `Set_Pwm()` 永不被调用 → **电机永远没有输出，车根本不能平衡**。
+		   真机上表现为：一上电就 stage=FAULT、fault=0x04，且怎么调都动不了。
+		   修正：① 先要求电压达到"电池存在"的门槛（> 6.00 V）才进入低压判定；
+		        ② 再要求**连续 N 拍**都低于阈值才确认（抗单次抖动）。
+		   为什么门槛取 6.00 V：本车是 3S 锂电（标称 11.1 V、满电 12.6 V、下限 ~9 V），
+		   任何"真实电池"都远高于 6 V；而悬空分压的读数远低于它 —— 6 V 是两者之间很宽的安全带。*/
+		if (bs.voltage > CFG_BAT_PRESENT_MIN)
+		{
+			if (bs.voltage < CFG_BAT_LOW_LIMIT)
+			{
+				if (s_lowBatCount < CFG_BAT_LOW_CONFIRM)
+				{
+					s_lowBatCount++;
+				}
+			}
+			else
+			{
+				s_lowBatCount = 0;
+			}
+		}
+		else
+		{
+			s_lowBatCount = 0;                        /* 没接电池（读数无效）→ 不判低压 */
+		}
+		in.hwFault = (uint8_t)((s_lowBatCount >= CFG_BAT_LOW_CONFIRM) ? 1 : 0);
 
 		/* 巡检点到位判据 = **编码器里程**（决策 49）。
 			红外 J11/J14 是 DNP 未焊，所以不依赖红外；间距在 app_config.h 里配置
@@ -535,7 +593,12 @@ static void ui_task(void *arg)
 		{
 			if (Flag_Page == PAGE_VENDOR)
 			{
-				APP_Show();
+				/* ★ 2026-10-13 真机联调发现并移除：这里原本还调了厂商的 `APP_Show()`。
+				   它会把 `{A..}$`/`{B..}$` 这类**厂商手机 APP 的文本协议**用 printf 发出去，
+				   而 printf 的路由是 `Flag_Show==0 → USART2`（**正是我们的蓝牙协议链路**）——
+				   于是每隔 100 ms 就往蓝牙链路上灌 ~30 字节 ASCII 文本，
+				   把我们的二进制帧流**污染**成夹杂乱码的流（表现为蓝牙链路丢帧/解帧异常）。
+				   我们的协议已经取代了厂商那套 APP 文本协议，所以这里只保留 OLED 绘制。*/
 				oled_show();          /* 厂商原始界面（页 0）*/
 			}
 			else

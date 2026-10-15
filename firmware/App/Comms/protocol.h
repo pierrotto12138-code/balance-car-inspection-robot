@@ -25,6 +25,15 @@
 #define PROTO_UP_TASK        0x12u   /* 任务状态   N=5  */
 #define PROTO_UP_EVENT       0x13u   /* 事件告警   N=5  */
 #define PROTO_UP_ENV_GAS     0x14u   /* 环境与气体 N=16 */
+/* ★ v1.2 新增：诊断帧（仅供调试/联调，不属于任务书功能）。
+ * 为什么要它：OLED 是现场唯一的可视化输出，而"屏幕画成什么样"在协议里原本**完全看不到** ——
+ * 联调时只能靠人眼看屏、靠猜。有了这一帧，工具端可以客观判定：
+ *   · 各任务还在不在跑（tick 计数在涨 = 任务存活）
+ *   · OLED 到底有没有被写（写字节计数在涨 = 有在刷屏；不涨 = 根本没画）
+ *   · 当前在哪一页（`Flag_Page`）、`Flag_Show`/`Way_Angle` 是什么
+ *   · 电池电压（原本任何上行帧都没有它）、剩余堆
+ * 它**不改动任何已有帧的长度与语义**，旧工具不认识 0x15 直接忽略即可（向后兼容）。*/
+#define PROTO_UP_DIAG        0x15u   /* 诊断（N=16，1 Hz，见 §3.4） */
 #define PROTO_UP_HEARTBEAT   0x1Fu   /* 心跳       N=0  */
 
 /* ---------- 下行命令字（监控 → 机器人，§四） ---------- */
@@ -193,6 +202,22 @@ typedef struct
 } ProtoEnvGas;
 uint16_t Proto_Pack_EnvGas(const ProtoEnvGas *s, uint8_t *out);
 int      Proto_Unpack_EnvGas(const uint8_t *in, uint16_t len, ProtoEnvGas *s);
+
+/* 0x15 诊断（N=16，v1.2 新增）：见 §3.4 偏移表。
+   这是**联调专用**的一帧，用来把"看不见的东西"变成可测数据（屏幕内容、任务存活、电压、堆）。*/
+typedef struct
+{
+	uint16_t voltageX100;   /* 电池电压，0.01 V（厂商 Voltage 原单位）*/
+	uint8_t  flagPage;      /* 自研页号：0=厂商页，1=环境气体页，2=巡检通信页 */
+	uint8_t  flagShow;      /* 厂商 Flag_Show：非 0 表示让位给 DataScope */
+	uint8_t  wayAngle;      /* 姿态算法：1=四元数 2=卡尔曼 3=互补 */
+	uint8_t  statusBits;    /* bit0 报警中 bit1 安全锁存 bit2 DHT11 有效 bit3 蓝牙链路开 */
+	uint16_t heapFreeKb;    /* 剩余堆（KB）*/
+	uint32_t oledWrites;    /* OLED 累计写入字节数（不涨 = 屏幕根本没在刷）*/
+	uint8_t  ticks[4];      /* 四个任务 tick 的低 8 位（在涨 = 该任务存活）*/
+} ProtoDiag;
+uint16_t Proto_Pack_Diag(const ProtoDiag *s, uint8_t *out);
+int      Proto_Unpack_Diag(const uint8_t *in, uint16_t len, ProtoDiag *s);
 
 /* 0x20 运动控制（下行）：线速度 int16(mm/s)、角速度 int16(0.1 dps)、使能 uint8 */
 typedef struct { int16_t linMmS, angDpsX10; uint8_t enable; } ProtoMotionCmd;

@@ -91,6 +91,17 @@ bool SerialLink::Reader::openPort(QSerialPort &port, QString *err)
         }
         return false;
     }
+
+    // ★ 必须显式驱动 DTR/RTS（2026-10-13 真机联调踩到，见 AGENTS 陷阱 33）：
+    //   本板 CH340G 的自动下载电路把 **DTR 接复位、RTS 接 BOOT0**
+    //   （厂商 ISP 工具原文：『DTR 的低电平复位，RTS 高电平进 BootLoader』）。
+    //   串口一被打开，驱动默认把两者都拉高 → **RTS 高 = MCU 停在 BootLoader** →
+    //   现象是"端口能开、但一个字节都收不到"，极容易误判为"没烧进去 / 线接错"。
+    //   运行态：DTR = 高（释放复位）、RTS = 低（不进 BootLoader）。
+    //   实测：DTR 必须为高，否则 MCU 一直处于复位。
+    port.setDataTerminalReady(true);
+    port.setRequestToSend(false);
+    QThread::msleep(120);   // 等复位释放、应用起来再开始读
     port.clear(QSerialPort::AllDirections);
     return true;
 }

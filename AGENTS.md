@@ -167,6 +167,8 @@ pwsh -NoProfile -File tools\eda_exec.ps1 -CodeFile tools\eda_pcb_overview.js
 | **30** | **★ 假源/回放必须自己走「解帧」这一步** —— 真链路是在读线程里 `FrameDecoder::feed()` 的；假源若只 emit 原始字节，上层永远收不到帧（本项目 P0 的 5 个测试曾因此全部拿到 0 帧）。**凡是「替代真实数据源」的组件，都要与真源走同一套解析路径**。 |
 | **31** | **★ 别用「定时器节拍 × 倍数」当时间基准** —— Windows 默认定时器粒度 ≈15.6 ms，`QTimer(5ms)` 实际约 15 ms 才触发；据此累计的虚拟时间会把产帧率拖到标称值的 1/3。**要速率准确就用 `QElapsedTimer` 量真实经过时间**，定时器只负责"多久检查一次"。 |
 | **32** | **★ 让「替代实现」与「真实实现」可切换，而不是写死** —— 本项目每条链路都有"真实串口 / 假源"两种实现（同一个 `LinkBase` 接口）：板子没到、演示现场硬件故障时，界面与上层代码**一行都不用改**就能继续演完。 |
+| **33** | **★ 打开串口时必须显式驱动 DTR/RTS，否则 MCU 停在 BootLoader** —— 本板 CH340G 的自动下载电路把 **DTR 接复位、RTS 接 BOOT0**（厂商 ISP 工具原文：『DTR 的低电平复位，RTS 高电平进 BootLoader』）。而串口一被打开，**驱动默认把两者都拉高** → RTS 高 = MCU 停在 BootLoader → 现象是"**端口能打开、但一个字节都收不到**"，极易误判成"没烧进去/线接错"。**运行态：DTR=高（释放复位）、RTS=低（不进 BootLoader）**；实测 DTR 必须为高。Python(pyserial) 与 Qt(QSerialPort) 两侧都要显式设置。 |
+| **34** | **★ 厂商的 `printf`/`APP_Show()` 会往协议链路灌文本** —— `usart.c` 的路由是 `Flag_Show==0 → USART2`（**我们的蓝牙协议链路**），`APP_Show()` 每 100 ms 会发 `{A..}$` 这类**厂商手机 APP 的文本协议**；本项目已用自有二进制协议取代它，若仍调用就会把帧流**污染**成夹杂 ASCII 的流（表现为蓝牙链路解帧异常/丢帧）。**凡是我们接管过的外设，必须把厂商的旧输出路径一并停掉**。 |
 
 ---
 
@@ -245,7 +247,7 @@ python ..\tools\fw_prep\gen_test_vectors.py       # 协议测试向量（B/C 共
 
 - **文档中文，工程目录英文。**
 - **改动前先看对应文档**：硬件 → `docs/design_hardware/`；协议 → `docs/protocol/`。
-- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 58）。
+- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 60）。
 - **固件（B）相关**：开工准备与核验记录在 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)；
   构建 = `arm-none-eabi-gcc` + Makefile（**必须产出 `.hex`**，用 FlyMcu 串口 ISP 烧录），**不考虑 Keil 交付**（决策 34）。
 - **新读者入口**：[`docs/文档索引.md`](docs/文档索引.md)；**接手**：[`docs/handoff/交接说明.md`](docs/handoff/交接说明.md)。
