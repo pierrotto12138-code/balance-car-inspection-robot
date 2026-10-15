@@ -42,7 +42,20 @@ int EXTI15_10_IRQHandler(void)
 			{
 			Get_Angle(Way_Angle);                                               //===更新姿态
 			Get_MC6();                                                        	//===读取航模遥控器的数据
+#ifndef USE_FREERTOS
 			if(++Flash_R_Count<=250&&Angle_Balance>30)Flash_Read();             //=====读取Flash的PID参数
+#else
+			/* ★ B 2026-10-13 隔离（审计发现"会错"级缺陷）：
+			   厂商这条"上电斜握 >30° 就从 Flash 读回 PID"的路径，地址是 `FLASH_SAVE_ADDR=0x08020000`，
+			   而**我们的持久化改到了 `CFG_PARAM_FLASH_ADDR=0x08040000`**（见 param_store.c），
+			   RTOS 下没有任何人往 0x08020000 写过 → 那里恒为 0xFFFFFFFF
+			   → `stmflash.c` 的"空白即用默认值"判据恒真 → 把 Balance_Kp/Kd、Velocity_Kp/Ki
+			   **静默写回 300/1/80/0.4**，正好覆盖 `ParamStore_Load()` 刚载入的调参
+			   （现象："参数明明存了，重启后偶尔变回默认"，且没有任何上报）。
+			   另外厂商 `Flash_Read()` 把 10 个 u32（40 B）读进 `u16 PID_Parameter[10]`（20 B），
+			   本身就是越界写。
+			   ⇒ RTOS 构建下**参数持久化的唯一权威是 ParamStore**，这条厂商路径必须整段隔离。*/
+#endif
       Voltage_Temp=Get_battery_volt();		                                //=====读取电池电压
 			Voltage_Count++;                                                    //=====平均值计数器
 			Voltage_All+=Voltage_Temp;                                          //=====多次采样累积

@@ -33,5 +33,9 @@ void OLED_Clear(void);
 void OLED_DrawPoint(u8 x,u8 y,u8 t);
 void OLED_ShowChar(u8 x,u8 y,u8 chr,u8 size,u8 mode);
 void OLED_ShowNumber(u8 x,u8 y,u32 num,u8 len,u8 size);
-void OLED_ShowString(u8 x,u8 y,const u8 *p);
+/* ★ B 2026-10-13：参数字符串类型由 `const u8 *` 改为 `const char *`。
+   原因：厂商所有调用点都直接传字符串字面量（`"Kalman"` 等），在 GCC 下会产生几十条
+   `-Wpointer-sign`（`char*` 传给 `u8*`）。改成 `char *` 与调用点语义一致，
+   内部仍按字节查字库（见 oled.c 的实现），**不改变任何运行时行为**。*/
+void OLED_ShowString(u8 x,u8 y,const char *p);
 #endif

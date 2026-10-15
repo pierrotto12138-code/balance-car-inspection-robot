@@ -9,6 +9,13 @@
 u8 OLED_GRAM[128][8];
 /* ★ B 2026-10-13：OLED 累计写入字节数（0x15 诊断帧上报，见 OLED_WR_Byte 处的说明）*/
 volatile uint32_t g_oledWrites = 0;
+
+/* ★ B 2026-10-13：软 SPI 位间空循环次数（≈每次 100 ns 量级）。
+   取值理由见 OLED_WR_Byte 里的长注释：目的是把 SCL 压到 SSD1306 能接受的范围（<≈10 MHz）。
+   现场若仍有乱码，先试加大到 16 / 32；若显示正常但刷新偏慢，可减小。*/
+#ifndef OLED_BIT_DELAY_LOOPS
+#define OLED_BIT_DELAY_LOOPS 8
+#endif
 void OLED_Refresh_Gram(void)
 {
 	u8 i,n;
@@ -45,6 +52,22 @@ void OLED_WR_Byte(u8 dat,u8 cmd)
 			OLED_SDIN_Clr();
 		OLED_SCLK_Set();
 		dat<<=1;
+		/* ★ B 2026-10-13：位间插入短延时（可调），把 SCL 频率压到模块能接受的范围。
+		   为什么必须加：本驱动是**纯 GPIO 位带硬翻转、一行延时都没有**（见下面 8 次循环）。
+		   同一份源码用不同编译器编出来的实际翻转速度差别很大：
+		     · 厂商用 Keil/ARMCC → 每条位带写要好几条指令，SCL 大致在模块可接受的量级；
+		     · 我们用 GCC -O2 → 位带写被优化得很短，SCL 可能到 20 MHz 量级，
+		       而 SSD1306 的 SCL 上限约 10 MHz，**超了就会丢命令** ——
+		       典型现象正是"页地址命令没生效，所有文字全挤进第 0 页"（=只看到第一行）。
+		   这里用 N 次空循环凑出 ~100 ns 级延时：既显著降低 SCL，又不至于拖慢刷新
+		   （1 KB 全屏刷新 ≈ 8 ms，10 Hz 刷新下占用约 8% CPU，可以接受）。
+		   若现场仍有乱码：把 OLED_BIT_DELAY_LOOPS 加大（16/32），或反过来减小。*/
+		{
+			volatile u8 dly = OLED_BIT_DELAY_LOOPS;
+			while (dly-- != 0)
+			{
+			}
+		}
 	}
 	OLED_RS_Set();
 }
@@ -151,7 +174,7 @@ void OLED_ShowNumber(u8 x,u8 y,u32 num,u8 len,u8 size)
 //x,y:起点坐标
 //*p:字符串起始地址
 //用16字体
-void OLED_ShowString(u8 x,u8 y,const u8 *p)
+void OLED_ShowString(u8 x,u8 y,const char *p)
 {
 #define MAX_CHAR_POSX 122
 #define MAX_CHAR_POSY 58

@@ -10,7 +10,7 @@ volatile u8 Flag_Page = PAGE_VENDOR;
 
 /* 厂商的 OLED_ShowString 形参是 `const u8 *`，直接传字符串字面量会产生
    -Wpointer-sign 告警（厂商代码里就有一堆）。我们的新代码保持零告警，故统一转换。 */
-#define S(x)   ((const u8 *)(x))
+#define S(x) ((const char *)(x))
 
 void Pages_Next(void)
 {
