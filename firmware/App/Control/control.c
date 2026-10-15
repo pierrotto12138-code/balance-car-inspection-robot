@@ -263,7 +263,42 @@ void Key(void)
 u8 Turn_Off(float angle, int voltage)
 {
 		u8 temp;
-			if(angle<(-40+Zhongzhi)||angle>(40+Zhongzhi)||1==Flag_Stop||voltage<1110)//电池电压低于11.1V关闭电机
+		/* ★ B 2026-10-13 修正（审计"会炸"级缺陷 A5，与平衡直接相关）：
+		   原来这句是**瞬时**判据 `voltage < 1110`（11.10 V），而 `Voltage` 是
+		   **每 100 拍（约 0.5 s）才更新一次**的平均值（见本文件上面的采样累加）：
+		     · 一旦某次均值落到 1110 以下 → 接下来 0.5 s 内该值**不会变** →
+		       `Turn_Off()` 连续约 100 拍返回 1 → `Set_Pwm()` 整段时间不被调用、
+		       方向脚被清零 → **电机 0.5 s 完全没有力矩**；
+		     · 电压回升后立刻恢复 → 平衡车表现为"突然软脚趴下、又突然恢复"的**周期性抽搐**
+		       （这正是"能平衡但会莫名摔倒"的典型成因）。
+		   改成**迟滞 + 连续确认**，与 App 层低压判据（app_config.h 的 CFG_BAT_*）同一套思路：
+		     · 低于 11.10 V 要**连续 50 拍**（0.25 s）才认定为低压并锁存；
+		     · 回升到 **11.60 V 以上**才解除锁存（0.5 V 迟滞，避免在阈值上反复开关）。
+		   为什么把状态机放在这里而不是 App 层：`Turn_Off()` 是**中断每拍**调用的执行端，
+		   低压保护必须在这里生效才真正关得住电机（App 层的 `App_MotorDisable` 是另一条独立通路）。
+		   真欠压时行为不变：照样停 —— 只是不再因"单次均值抖动"而抽风。*/
+		{
+			static u16 s_lowBatCnt = 0;
+			static u8  s_lowBatLatched = 0;
+
+			if (voltage > 0 && voltage < 1110)
+			{
+				if (s_lowBatCnt < 50)
+				{
+					s_lowBatCnt++;
+				}
+				if (s_lowBatCnt >= 50)
+				{
+					s_lowBatLatched = 1;
+				}
+			}
+			else if (voltage >= 1160)
+			{
+				s_lowBatLatched = 0;      /* 回升到 11.60 V 以上才解除（迟滞）*/
+				s_lowBatCnt = 0;
+			}
+
+			if(angle<(-40+Zhongzhi)||angle>(40+Zhongzhi)||1==Flag_Stop||s_lowBatLatched)//倾角超限/已停车/低压锁存 → 关电机
 			{	                                                 //===倾角大于40度关闭电机
       temp=1;                                            //===Flag_Stop置1关闭电机
 			AIN1=0;
@@ -274,6 +309,7 @@ u8 Turn_Off(float angle, int voltage)
 			else
       temp=0;
       return temp;
+		}
 }
 
 /**************************************************************************
