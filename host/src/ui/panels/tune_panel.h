@@ -22,6 +22,7 @@
 #include "domain/vehicle_state.h"
 
 #include <QElapsedTimer>
+#include <QSet>
 #include <QWidget>
 
 #include <QStringList>
@@ -106,4 +107,5 @@ private:
 
     QTimer *m_timer = nullptr;
     QElapsedTimer m_clock; ///< 曲线横轴的时间基（面板自己的经过时间）
+    QSet<quint8> m_timeoutReported; ///< 已经报过"无回读超时"的参数（每次新下发会清）
 };

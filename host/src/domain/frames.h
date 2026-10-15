@@ -36,11 +36,19 @@ struct PoseData {
 };
 
 /// 0x11 运动状态（N=9）
+///
+/// ★ **`distanceMm` 的单位是毫米，不是厘米**（2026-10-15 以已烧录代码为准的更正）：
+///   固件 `timer.c:87` 的 `Distance = counts * 170 / 1000`（TIM3 捕获回波，`main.c:53`
+///   `TIM3_Cap_Init(0xFFFF, 84-1)`）得到的就是**毫米量级**，`app_tasks.c:382` 把它**原样**
+///   填进 `0x11` 的偏移 6；厂商自己的 OLED 代码也是 `Distance/10` 当 cm 显示（`show.c:99`）。
+///   ⇒ 协议文档写"cm"是**文档错**（已按代码更正）；上位机若按 cm 直接用，超声读数会**放大 10 倍**。
+///   显示时用 `units::cmFromMm()` 换算（换算只允许出现在 units 层）。
 struct MotionData {
     int leftMmS = 0;      ///< 左轮速 mm/s（有符号：负 = 反转）
     int rightMmS = 0;     ///< 右轮速
-    double pwmPercent = 0.0; ///< PWM 占空比（千分比 → %，协议 §七 约定 4）
-    int distanceCm = 0;   ///< 超声波距离 cm
+    double pwmPercent = 0.0; ///< PWM 字段 → %（★ 真机实测该字段是**带符号电机输出均值**≈±8200，
+                             ///< 不是协议 §七 约定 4 写的 0~1000 千分比 —— 见 `pwmPermilleInProtocolRange()`）
+    int distanceMm = 0;   ///< 超声波距离 **mm**（标度为厂商常数、未按现场声速/安装角标定；不是 cm）
     uint8_t avoidFlags = 0; ///< 避障状态位（协议未细化位定义 → 只原样显示，不做语义假设）
 };
 

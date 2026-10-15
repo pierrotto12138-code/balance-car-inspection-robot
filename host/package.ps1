@@ -126,9 +126,12 @@ Info "  界面前台运行 4 s 未异常退出"
 
 Info "③ 截图链路（窗口渲染 → QWidget::grab → PNG 落盘）…"
 $shot = Join-Path $OutDir '_shot.png'
+Remove-Item $shot -ErrorAction SilentlyContinue
 $g2 = Start-Process -FilePath $target -PassThru `
       -ArgumentList @('--demo', '--rate', '8', '--shot', $shot, '--shot-delay', '2000', '--shot-tab', '2')
-Start-Sleep -Seconds 6
+# ★ 不要用"睡固定秒数"：--shot 完成后程序会自己退出，这里等它退出（最多 25 s）更可靠；
+#   固定睡眠曾在本项目上出现"进程还没写完就被判定失败"的假失败。
+$null = $g2.WaitForExit(25000)
 if (-not $g2.HasExited) { $g2.Kill(); $g2.WaitForExit() }
 if (-not (Test-Path $shot) -or (Get-Item $shot).Length -lt 20KB) {
     throw "❌ 截图失败（没生成或文件过小）—— 渲染路径有问题"
@@ -142,12 +145,21 @@ Remove-Item $shot -ErrorAction SilentlyContinue
 Info "④ 记录链路（CSV 行数 + SQLite 会话库）…"
 $rec = Join-Path $OutDir '_rec.csv'
 $db  = Join-Path $OutDir '_rec.db'
+Remove-Item $rec, $db -ErrorAction SilentlyContinue
 $g3 = Start-Process -FilePath $target -PassThru `
       -ArgumentList @('--demo', '--rate', '8', '--record', $rec, '--db', $db)
-Start-Sleep -Seconds 5
+# ★ 轮询产物、不要睡固定秒数：机器有负载时（例如同时跑别的东西）启动会变慢，
+#   "睡 5 秒再检查"会给出**假失败**（本项目在同一轮里就在截图那步栽过一次）。
+$rows = 0
+for ($i = 0; $i -lt 40; $i++) {          # 最多 20 s
+    Start-Sleep -Milliseconds 500
+    if ((Test-Path $rec) -and (Test-Path $db)) {
+        $rows = (Get-Content $rec -ErrorAction SilentlyContinue | Measure-Object -Line).Lines - 1
+        if ($rows -ge 10 -and (Get-Item $db).Length -gt 8KB) { break }
+    }
+}
 if (-not $g3.HasExited) { $g3.Kill(); $g3.WaitForExit() }
 if (-not (Test-Path $rec)) { throw "❌ 没生成记录文件（录制功能不可用）" }
-$rows = (Get-Content $rec | Measure-Object -Line).Lines - 1
 if ($rows -lt 10) { throw "❌ 记录文件只有 $rows 行数据（应远大于 10）" }
 if (-not (Test-Path $db) -or (Get-Item $db).Length -lt 8KB) {
     throw "❌ 会话库没建起来 —— qsqlite 驱动没随包部署（记录会静默降级成只有 CSV）"

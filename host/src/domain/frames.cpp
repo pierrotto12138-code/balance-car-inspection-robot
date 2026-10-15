@@ -46,7 +46,7 @@ bool decodeMotion(const QByteArray &d, MotionData &out)
     v.leftMmS = proto::getI16(p + 0);
     v.rightMmS = proto::getI16(p + 2);
     v.pwmPercent = units::pwmPercent(proto::getI16(p + 4));
-    v.distanceCm = proto::getU16(p + 6);
+    v.distanceMm = proto::getU16(p + 6);
     v.avoidFlags = p[8];
     out = v;
     return true;

@@ -216,7 +216,7 @@ void CsvRecorder::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data)
             cols[LeftMmS] = QString::number(v.leftMmS);
             cols[RightMmS] = QString::number(v.rightMmS);
             cols[Pwm] = num(v.pwmPercent, 1);
-            cols[Dist] = QString::number(v.distanceCm);
+            cols[Dist] = num(domain::units::cmFromMm(v.distanceMm), 1);
             cols[Avoid] = QStringLiteral("0b%1").arg(v.avoidFlags, 4, 2, QLatin1Char('0'));
         }
         break;

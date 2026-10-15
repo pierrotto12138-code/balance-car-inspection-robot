@@ -131,7 +131,8 @@ private slots:
         QCOMPARE(mot.leftMmS, 250);
         QCOMPARE(mot.rightMmS, -250);
         QCOMPARE(mot.pwmPercent, 120.0);
-        QCOMPARE(mot.distanceCm, 85);
+        QCOMPARE(mot.distanceMm, 85);   // ★ 字段单位是 **mm**（不是 cm）—— 见 MotionData 的说明
+        QCOMPARE(domain::units::cmFromMm(mot.distanceMm), 8.5); // 界面按 cm 显示
         QCOMPARE(int(mot.avoidFlags), 3);
 
         TaskData task;

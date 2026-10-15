@@ -403,7 +403,7 @@ void OverviewPanel::refresh()
         m_left->setValue(m.leftMmS);
         m_right->setValue(m.rightMmS);
         m_pwm->setValue(m.pwmPercent);
-        m_dist->setValue(m.distanceCm);
+        m_dist->setValue(domain::units::cmFromMm(m.distanceMm)); // 字段是 mm，界面按 cm 显示
         const QString src = sourceText(proto::up::kMotion);
         m_left->setSub(src);
         m_right->setSub(src);
@@ -438,7 +438,8 @@ void OverviewPanel::refresh()
                                .arg(domain::units::number(domain::kBatteryPresenceV, 2)));
         } else {
             m_volt->setSub(st.batteryLow()
-                               ? QStringLiteral("低于报警线 %1 V（固件 ≥%2 V 才自动解除）")
+                               ? QStringLiteral("低于报警线 %1 V —— 控制侧 ≥%2 V 恢复；"
+                                                "★ App 侧锁存不会自动清，需「重下任务解除锁存」")
                                      .arg(domain::units::number(domain::units::kLowBatteryV, 2))
                                      .arg(domain::units::number(domain::kLowBatteryReleaseV, 2))
                                : QStringLiteral("正常（报警线 %1 V）")
@@ -645,11 +646,15 @@ void OverviewPanel::refresh()
                            : exec == domain::LoopData::Execution::Protected
                                ? QStringLiteral("保护中，未驱动（Flag_Stop/锁存）")
                                : QString());
-    // 0x16 判读组合（B 侧接口文档 §2.1）：差速/极性 bug 的**直接**判据
-    m_ledTurnDiff->setLevel(loopOk && l.differentialWithoutTurn() ? LedIndicator::Level::Alarm
+    // 0x16 判读组合（B 侧接口文档 §2.1）：差速/极性 bug 的**线索**。
+    // ★ 2026-10-15 复查降级为琥珀：`moto1/moto2` 是**经过侧向极性补偿之后**的全局量，
+    //   而固件里"哪一侧翻向"的注释与宏值自相矛盾（`app_config.h:138-151` 注释说唯一解是
+    //   (1,0)、宏却是 (1,1)）⇒ 该组合**可能是正常现象**，不能当故障报红。
+    m_ledTurnDiff->setLevel(loopOk && l.differentialWithoutTurn() ? LedIndicator::Level::Warn
                                                                  : LedIndicator::Level::Off,
                             loopOk && l.differentialWithoutTurn()
-                                ? QStringLiteral("两轮相反命令，转向环却没出力")
+                                ? QStringLiteral("Turn=0 而两轮命令不同。**先核对固件极性开关**"
+                                                 "（CFG_MOTOR_*_INVERT）再判断是否为差速 bug")
                                 : QString());
     // 倾角保护：现场把车手动倾过去也会触发 ⇒ **不是故障**，用琥珀而不是红。
     // Zhongzhi（平衡目标角）的当前值从参数账本取；账本没有时用 0.5（本机定稿值）

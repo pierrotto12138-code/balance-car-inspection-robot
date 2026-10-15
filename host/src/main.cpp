@@ -223,7 +223,7 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
                 .arg(m.leftMmS)
                 .arg(m.rightMmS)
                 .arg(domain::units::number(m.pwmPercent, 1))
-                .arg(m.distanceCm)
+                .arg(domain::units::number(domain::units::cmFromMm(m.distanceMm), 1))
                 .arg(m.avoidFlags, 2, 16, QLatin1Char('0')));
     } else {
         add(QStringLiteral("  运动：**无数据**"));
@@ -492,10 +492,11 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
             out << QStringLiteral("\n【0x16 判读（B 侧口径）】\n")
                 << QStringLiteral("  固件版本：%1/%2\n")
                        .arg(domain::hexByte(l.fwVersion), domain::firmwareVersionText(l.fwVersion))
-                << QStringLiteral("  Turn=%1 时两轮命令 %2（期望相同）\n")
+                << QStringLiteral("  Turn=%1 时两轮命令 %2（★ 该组合受固件侧向极性开关影响，"
+                                  "不同不一定是 bug）\n")
                        .arg(l.turnPwm)
-                       .arg(l.moto1 == l.moto2 ? QStringLiteral("相同 ✔")
-                                               : QStringLiteral("不同 ⚠（差速/极性 bug？）"))
+                       .arg(l.moto1 == l.moto2 ? QStringLiteral("相同")
+                                               : QStringLiteral("不同 ⚠"))
                 << QStringLiteral("  Moto1=%1 CCR_A=%2 ⇒ CCR/|Moto| = %3（期望 ≈1.17）· %4\n")
                        .arg(l.moto1)
                        .arg(l.ccrA)

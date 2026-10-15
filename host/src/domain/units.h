@@ -33,6 +33,11 @@ constexpr double kPercentPerPermille = 0.1; // 0x11 PWM：千分比 → %
 /// 低压报警线（协议 §七 约定 2：11.10 V 为低位报警线）
 constexpr double kLowBatteryV = 11.10;
 
+/// 超声波距离：`0x11` 的字段是**毫米**（见 `frames.h` 的 `MotionData::distanceMm` 说明），
+/// 界面按 **cm** 显示 ⇒ 换算只在这里做一次（决策 65：换算只允许出现在 units 层）。
+constexpr double kMmPerCm = 10.0;
+inline double cmFromMm(double mm) { return mm / kMmPerCm; }
+
 inline double deg(int16_t raw) { return static_cast<double>(raw) * kDegPerRaw; }
 inline double dps(int16_t raw) { return static_cast<double>(raw) * kDpsPerRaw; }
 inline double ppm(uint16_t raw) { return static_cast<double>(raw) * kPpmPerRaw; }

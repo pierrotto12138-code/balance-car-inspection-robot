@@ -85,6 +85,16 @@ public:
     bool lastRequestConfirmed(quint8 id) const;
     /// 最近一次下发值（没下发过返回 NaN）
     double lastRequestValue(quint8 id) const;
+    /// 下发后**多久没等到回读**就认为"固件根本没回"（毫秒）。
+    ///
+    /// ★ 为什么需要它：真机代码里**越界 / NaN / 未知 ID 时固件整帧不回复**
+    ///   （`app_tasks.c:214` 的分支不成立）—— 界面若只会显示"待回读"，用户会一直等，
+    ///   而正确结论是"这次下发被拒（或该 ID 未实现）"。所以必须**超时判失败**并说清原因。
+    static constexpr qint64 kNoReplyTimeoutMs = 800;
+    /// 该参数是否有"已下发但超时仍无回读"的情形（`nowMs` = 单调毫秒）
+    bool requestTimedOut(quint8 id, qint64 nowMs) const;
+    /// 内部时钟读数（单测用；界面直接用自己 `QElapsedTimer` 的更省事）
+    qint64 clockMsForTest() const { return nowMs(); }
 
     QVector<ParamSnapshot> history() const { return m_history; }
     /// 清空（新会话）
@@ -118,6 +128,7 @@ private:
     QHash<quint8, double> m_current;   ///< 最近一次回读值
     QHash<quint8, double> m_requested; ///< 最近一次下发值
     QHash<quint8, bool> m_confirmed;   ///< 最近一次下发是否已被"一致的回读"确认
+    QHash<quint8, qint64> m_requestAt; ///< 最近一次下发的时刻（判"无回读超时"）
     QVector<ParamSnapshot> m_history;
     SurveyCfg m_survey;
     QElapsedTimer m_clock;

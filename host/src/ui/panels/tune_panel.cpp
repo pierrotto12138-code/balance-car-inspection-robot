@@ -379,6 +379,7 @@ bool TunePanel::sendParam(quint8 id, double value)
     const qint64 n = m_mgr->send(proto::down::kPidTune, payload);
     const bool ok = n > 0;
     m_params->noteRequest(id, value); // 先记账，再看回读（这样"回读不一致"有据可查）
+    m_timeoutReported.remove(id);     // 新的一次下发 ⇒ 重新开始等回读超时
     appendLogRow(QStringLiteral("下发 %1").arg(data::pidParamName(id)),
                  domain::units::number(value, 4), QStringLiteral("待回读"),
                  ok ? QStringLiteral("已下发 %1 B").arg(n) : QStringLiteral("✘ 无可用链路"), ok);
@@ -540,12 +541,24 @@ void TunePanel::refresh()
     // 表格里"待回读/已回读"会随回读更新，10 Hz 刷一次足够（不是每帧重绘）
     rebuildTable();
 
+    // ★ 无回读超时：真机代码里**越界/NaN/未知 ID 时固件整帧不回复**（不是回旧值）——
+    //   界面若只显示"待回读"，用户会一直等；正确结论是"这次下发被拒/该 ID 未实现"。
+    for (const data::PidParamInfo &p : data::pidParams()) {
+        if (m_params->requestTimedOut(p.id, m_clock.elapsed()) && !m_timeoutReported.contains(p.id)) {
+            m_timeoutReported.insert(p.id);
+            appendLogRow(QStringLiteral("回读超时：%1").arg(QString::fromUtf8(p.name)),
+                         domain::units::number(m_params->lastRequestValue(p.id), 4),
+                         QStringLiteral("无回读"),
+                         QStringLiteral("✘ 固件整帧未回复（越界/NaN/未知 ID 都是这个表现）"), false);
+        }
+    }
+
     // 0x16 的三个"一眼定位故障"组合（B 侧接口文档 §2.1）—— 调参页把它当"判读结论"常显
     if (m_state->received(proto::up::kLoop)) {
         const domain::LoopData &l = m_state->loop();
         QStringList parts;
         parts << (l.differentialWithoutTurn()
-                      ? QStringLiteral("⚠ Turn=0 却两轮命令不同（差速/极性 bug）")
+                      ? QStringLiteral("⚠ Turn=0 却两轮命令不同（先核对固件极性开关再判故障）")
                       : QStringLiteral("✔ Turn=0 时两轮命令一致"));
         // "算了没执行"分级：未使能/锁存时 CCR=0 是**保护生效**（现场"没使能电机"就长这样）
         const domain::LoopData::Execution exec = l.executionState();

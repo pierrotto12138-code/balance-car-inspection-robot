@@ -210,7 +210,7 @@ QByteArray ReplayLink::makeMotion(quint32 tMs)
     proto::putI16(d, static_cast<int16_t>(spd));      // 左轮速 mm/s
     proto::putI16(d, static_cast<int16_t>(spd));      // 右轮速
     proto::putI16(d, static_cast<int16_t>(spd / 2));  // PWM 千分比
-    proto::putU16(d, 120);                            // 距离 cm
+    proto::putU16(d, 1200);                           // 距离 mm（≈120 cm；★ 字段是毫米，见 MotionData 说明）
     d.push_back(0x00);                                // 避障状态位
     return toQ(proto::encodeFrame(proto::up::kMotion, d));
 }

@@ -17,12 +17,13 @@ const QVector<PidParamInfo> kParams = {
      "车往哪边倒就往哪边加速的力度。太大 = 高频抖动/啸叫，太小 = 站不住"},
     {0x02, "直立环 D", "Balance_Kd", 1.0, 0.0, 50.0,
      "抑制角度变化速度（阻尼）。是平衡车里最容易调出抖动的参数"},
-    {0x03, "速度环 P", "Velocity_Kp", -80.0, -500.0, 500.0,
-     "把轮速拉回 0 的力度。★ 本机定稿 −80（电机/编码器符号与厂商约定相反，负值才正确）；"
+    {0x03, "速度环 P", "Velocity_Kp", 80.0, -500.0, 500.0,
+     "把轮速拉回 0 的力度。★ 本机符号约定与厂商相反，B 侧想要 −80；但**已烧录固件 v0xAF 的校验"
+     "范围是 0~500**（param_store.c 的 s_range 下限 0.0f）⇒ 填负值会被拒绝并保持原值（界面会标红）；"
      "速度环权重是平衡环的十几倍，符号错会把平衡环表现完全盖住"},
-    {0x04, "速度环 I", "Velocity_Ki", -0.4, -0.82, 0.82,
-     "消除稳态漂移。★ 本机定稿 −0.4；范围取固件实际校验的 ±0.82"
-     "（= 限幅 8200 ÷ 积分限幅 10000，再大积分一项就能把输出顶满）"},
+    {0x04, "速度环 I", "Velocity_Ki", 0.4, -0.82, 0.82,
+     "消除稳态漂移。★ 同上：固件 v0xAF 校验 0~0.82（不接受负值），B 侧想要的 −0.4 目前被拒；"
+     "上界 0.82 = 限幅 8200 ÷ 积分限幅 10000，再大积分一项就能把输出顶满"},
     {0x05, "平衡目标角（重心补偿）", "Zhongzhi", 0.5, -20.0, 20.0,
      "控制目标：让倾角收敛到该角度（单位 °，步进 0.1）。本机重心偏后约 0.5° ⇒ 定稿 0.5；"
      "调大更前倾、调小更后倾（实测 1.0 后漂、0.0 前倾）"},
@@ -146,7 +147,19 @@ void ParamStore::noteRequest(quint8 id, double value)
     m_requested.insert(id, value);
     // 下发后先标"未确认"：哪怕回读马上就来，中间这段时间界面也应显示"待回读"
     m_confirmed.insert(id, false);
+    m_requestAt.insert(id, nowMs());
     append(id, value, QStringLiteral("下发"), true);
+}
+
+bool ParamStore::requestTimedOut(quint8 id, qint64 nowMs) const
+{
+    if (!m_requestAt.contains(id)) {
+        return false;
+    }
+    if (m_confirmed.value(id, false)) {
+        return false; // 已确认收到 ⇒ 不算超时
+    }
+    return (nowMs - m_requestAt.value(id)) > kNoReplyTimeoutMs;
 }
 
 void ParamStore::noteReadback(quint8 id, double value)

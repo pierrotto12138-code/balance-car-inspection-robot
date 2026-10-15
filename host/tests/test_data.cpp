@@ -258,9 +258,10 @@ private slots:
         QSignalSpy updated(&st, &ParamStore::valueUpdated);
         QSignalSpy mismatch(&st, &ParamStore::mismatch);
 
-        // 未回读前：显示定义里的默认值（★ 本机定稿值，不是厂商默认值），但"未确认"
-        QCOMPARE(st.current(0x06), 0.0); // Turn_Kp 本机调试期定稿 0（B 侧接口文档 §3.1）
-        QCOMPARE(st.current(0x03), -80.0); // ★ 负值是本机正确值
+        // 未回读前：显示定义里的默认值（★ 已按代码更正：固件 v0xAF 实际生效值就是 +80/+0.4，
+        // 因为编译期定稿的 −80/−0.4 被 param_store 的范围校验拒绝，见决策 77）
+        QCOMPARE(st.current(0x06), 0.0); // Turn_Kp 定稿 0
+        QCOMPARE(st.current(0x03), 80.0); // ★ 板上实际生效值（代码事实）
         QVERIFY(!st.readbackReceived(0x06));
         QVERIFY(st.lastRequestConfirmed(0x06)); // 没下发过 ⇒ 不构成不一致
 
@@ -293,8 +294,23 @@ private slots:
         QVERIFY(!st.history().at(3).ok); // 第二次回读与下发不一致 → 必须留痕为"失败"
     }
 
-    void paramStore_acksAndSurveyCfg()
+    void paramStore_noReplyTimeout()
     {
+        // ★ 真机口径（代码事实）：越界 / NaN / 未知 ID 时固件**整帧不回复**
+        //   （app_tasks.c:214 的分支不成立）⇒ 界面必须"超时判失败"，否则会一直等。
+        ParamStore st;
+        st.noteRequest(0x01, 350.0);
+        QVERIFY(!st.requestTimedOut(0x01, 100));          // 刚发出去：不算超时
+        QVERIFY(st.requestTimedOut(0x01, 900));           // 超过 800 ms 无回读 ⇒ 判失败
+        st.noteReadback(0x01, 350.0);                     // 回读到了
+        QVERIFY(st.lastRequestConfirmed(0x01));
+        QVERIFY(!st.requestTimedOut(0x01, 5000));         // 已确认 ⇒ 永远不报超时
+        QVERIFY(!st.requestTimedOut(0x02, 5000));         // 没下发过 ⇒ 不报
+        st.noteRequest(0x02, 1.0);
+        QVERIFY(st.requestTimedOut(0x02, st.clockMsForTest() + 1000));
+    }
+
+    void paramStore_acksAndSurveyCfg()    {
         ParamStore st;
         st.noteAck(0x00, 0.0); // 保存到 Flash：0.0 = 成功
         QVERIFY(st.history().last().source == QStringLiteral("回执"));
