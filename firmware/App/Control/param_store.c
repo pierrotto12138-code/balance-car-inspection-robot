@@ -80,8 +80,46 @@ int ParamStore_Save(void)
 	return 0;
 }
 
+/* ★ 2026-10-13 新增：按参数的范围校验（审计 P1，"最容易补也最该补"的一条）。
+   原先 `ParamPack_Set` 只检查 ID 是否合法、**不检查数值**，而 Unpack 的合理性检查是
+   `|v| < 1.0e6` —— 也就是一条**合法帧**就能把车调飞：
+     · Balance_Kp = 999999 ⇒ 输出立刻打满（|bias|>0.008° 就饱和）；
+     · Zhongzhi   = 180    ⇒ Turn_Off 的 ±40° 判据错乱（"倾角保护"形同虚设）。
+   上界依据：① 物理可用的量级（对照厂商默认值与调参常识）；
+             ② `Velocity_Ki` 的上界取 0.82 = 限幅 8200 / 积分限幅 10000
+                —— 超过它，**积分一项就能把输出顶到限幅**（windup，越调越差）。*/
+typedef struct { uint8_t id; float lo; float hi; } ParamRange;
+
+static const ParamRange s_range[] = {
+	{ PARAM_BALANCE_KP,    0.0f,  1500.0f },
+	{ PARAM_BALANCE_KD,    0.0f,    50.0f },
+	{ PARAM_VELOCITY_KP,   0.0f,   500.0f },
+	{ PARAM_VELOCITY_KI,   0.0f,     0.82f },
+	{ PARAM_ZHONGZHI,    -20.0f,    20.0f },
+	{ PARAM_TURN_KP,       0.0f,   500.0f },
+	{ PARAM_TURN_KD,       0.0f,    10.0f },
+};
+
 int ParamStore_SetOne(uint8_t id, float value)
 {
+	unsigned i;
+
+	/* NaN 一律拒绝（NaN 与任何比较都为假，会绕过下面的区间判断）*/
+	if (!(value == value))
+	{
+		return -2;
+	}
+	for (i = 0; i < sizeof(s_range) / sizeof(s_range[0]); i++)
+	{
+		if (s_range[i].id == id)
+		{
+			if (value < s_range[i].lo || value > s_range[i].hi)
+			{
+				return -2;      /* 越界：拒绝，且**不改动**当前生效值 */
+			}
+			break;
+		}
+	}
 	if (ParamPack_Set(&s_params, id, value) != 0)
 	{
 		return -1;

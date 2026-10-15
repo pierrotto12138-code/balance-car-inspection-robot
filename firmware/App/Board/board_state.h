@@ -74,6 +74,12 @@ typedef struct
 	uint8_t  pwmApplied;    /* 本拍是否真的调用了 Set_Pwm（铁律 29 的直接断言位）*/
 } BoardControlInternals;
 void Board_ReadControlInternals(BoardControlInternals *out);
+/* ★ 2026-10-13 新增：运动方向出口（A1 运动链路）。
+   厂商的运动控制就是这四个标志（`velocity()` 读 Qian/Hou，`turn()` 读 Left/Right），
+   RTOS 下原先**没有任何人写它们** ⇒ 上位机发 0x20 车也不会走。
+   位定义见实现：bit0..bit3 = 前 / 后 / 左 / 右。*/
+void Board_WriteMotion(uint8_t dirFlags);
+void Board_StopMotion(void);
 void Board_LedSet(uint8_t on);
 
 /* ---- PID 参数：参数表 ↔ 厂商全局量 的双向同步 ----

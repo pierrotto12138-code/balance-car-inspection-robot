@@ -102,6 +102,8 @@ static uint32_t       s_lastDhtMs = 0;
 static uint32_t       s_lastSampleMs = 0;
 static uint32_t       s_calibStartMs = 0;
 static uint32_t       s_lastGasTxMs = 0;
+/* ★ 最后一次收到 0x20 运动指令的时刻（用于 500 ms 无指令自动停）*/
+static uint32_t       s_lastMotionMs = 0;
 static uint16_t       s_mq2RawAvg = 0, s_mq135RawAvg = 0;
 
 /* ----------------------------------------------------------------------------
@@ -224,6 +226,41 @@ static void on_frame(const ProtoFrame *f, void *user)
 	case PROTO_DOWN_ESTOP:                   /* 0x2F 紧急停机 */
 	{
 		int accepted = Patrol_Command(&s_patrol, f->cmd, f->data, f->len, now);
+
+		/* ★ 2026-10-13（A1 运动链路）：0x20 的**连续量真正用起来**。
+		   原先只用了 data[4] 的使能位、把 linMmS/angDpsX10 **直接丢弃**，
+		   而 RTOS 下又没有任何人写 Flag_Qian/Hou/Left/Right ⇒ 上位机发指令车不会走。
+		   数据段（N=5）：[0..1] linMmS(int16, mm/s) [2..3] angDpsX10(int16, 0.1dps) [4] enable。
+		   实现按厂商原语义（方向标志），阈值以下当作"不走/不转"；enable=0 时立即停。*/
+		if (f->cmd == PROTO_DOWN_MOTION && f->len >= 5)
+		{
+			int16_t lin = (int16_t)((uint16_t)f->data[0] | ((uint16_t)f->data[1] << 8));
+			int16_t ang = (int16_t)((uint16_t)f->data[2] | ((uint16_t)f->data[3] << 8));
+			uint8_t en  = f->data[4];
+			uint8_t dir = 0;
+
+			if (en && accepted)
+			{
+				if (lin >= (int16_t)CFG_MOTION_LIN_MIN_MMS)
+				{
+					dir |= 0x01u;                    /* 前进 */
+				}
+				else if (lin <= -(int16_t)CFG_MOTION_LIN_MIN_MMS)
+				{
+					dir |= 0x02u;                    /* 后退 */
+				}
+				if (ang >= (int16_t)CFG_MOTION_ANG_MIN_DPS10)
+				{
+					dir |= 0x04u;                    /* 左转 */
+				}
+				else if (ang <= -(int16_t)CFG_MOTION_ANG_MIN_DPS10)
+				{
+					dir |= 0x08u;                    /* 右转 */
+				}
+				s_lastMotionMs = now;
+			}
+			Board_WriteMotion(dir);                  /* en=0 / 未接受 ⇒ dir=0 ⇒ 立即停 */
+		}
 
 		/* ★ 决策 41/47：安全停车是**锁存**的 ——
 				只有"显式使能"（0x21 任务=自主巡航，或 0x20 使能位=1）才能解除，并且
@@ -430,7 +467,7 @@ static void comm_task(void *arg)
 						it.statusBits  = (uint8_t)((ci.flagStop ? 0x01u : 0u) |
 												   (ci.motorDisable ? 0x02u : 0u) |
 												   (ci.pwmApplied ? 0x04u : 0u));
-						it.reserved    = 0;
+						it.reserved    = CFG_FW_BUILD_ID;   /* 固件版本字节（月<<4|日）*/
 						Proto_Pack_Internals(&it, payload);
 						send_frame_all(PROTO_UP_INTERNALS, payload, 20);
 					}
@@ -581,6 +618,14 @@ static void state_task(void *arg)
 		/* ★ 决策 47：把"该不该关电机"告诉控制中断（安全停车/故障 → 中断强制 Flag_Stop=1）。
 			这是"500 ms 失联安全停车"能否真正停车的唯一通路。 */
 		App_MotorDisable = Patrol_MotorsDisabled(&s_patrol) ? 1u : 0u;
+
+		/* ★ 运动指令看门狗（安全必需）：超过超时没收到新的 0x20 → 自动停。
+		   没有它的话，"上位机崩了/线断了"时车会按最后一条指令一直跑下去。*/
+		if (s_lastMotionMs != 0 && (uint32_t)(now - s_lastMotionMs) > CFG_MOTION_TIMEOUT_MS)
+		{
+			Board_StopMotion();
+			s_lastMotionMs = 0;
+		}
 
 		/* 阈值研判（多帧确认 + 90% 迟滞）*/
 		if (s_calibDone)

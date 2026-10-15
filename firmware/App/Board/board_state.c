@@ -6,7 +6,8 @@
 /* 这两个量没有集中声明处（App_MotorDisable 定义在 app_tasks.c、g_pwmApplied 定义在
    control.c），这里显式 extern，类型与定义处一致（volatile u8）。*/
 extern volatile u8 App_MotorDisable;
-extern volatile u8 g_pwmApplied;            /* 厂商全局量的**统一声明处**（见 System/sys/sys.h）*/
+extern volatile u8 g_pwmApplied;
+/* 厂商运动方向标志（定义在 User/main.c）。这里显式 extern，因为没有任何头集中声明它们。*/
 #ifdef USE_FREERTOS
 #include "FreeRTOS.h"
 #include "task.h"
@@ -110,6 +111,26 @@ void Board_ReadControlInternals(BoardControlInternals *out)
 #ifdef USE_FREERTOS
 	taskEXIT_CRITICAL();
 #endif
+}
+
+void Board_WriteMotion(uint8_t dirFlags)
+{
+#ifdef USE_FREERTOS
+	taskENTER_CRITICAL();
+#endif
+	/* 先全清再置位：与厂商 APP 解析的语义一致（同一时刻最多一个前进/后退、一个左/右）*/
+	Flag_Qian  = (u8)((dirFlags & 0x01u) ? 1 : 0);
+	Flag_Hou   = (u8)((dirFlags & 0x02u) ? 1 : 0);
+	Flag_Left  = (u8)((dirFlags & 0x04u) ? 1 : 0);
+	Flag_Right = (u8)((dirFlags & 0x08u) ? 1 : 0);
+#ifdef USE_FREERTOS
+	taskEXIT_CRITICAL();
+#endif
+}
+
+void Board_StopMotion(void)
+{
+	Board_WriteMotion(0);
 }
 
 void Board_LedSet(uint8_t on)

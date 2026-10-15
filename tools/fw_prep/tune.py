@@ -182,7 +182,7 @@ def describe(f):
                 "moto1": s16(d, 6), "moto2": s16(d, 8),
                 "ccrA": u16(d, 10), "ccrB": u16(d, 12),
                 "encLeft": s16(d, 14), "encRight": s16(d, 16),
-                "statusBits": d[18]}
+                "statusBits": d[18], "buildId": d[19]}
     if c == CMD_DIAG and len(d) >= 16:
         # ★ v1.2 诊断帧：把"屏幕有没有在刷、任务还活着没有、电压多少"变成可测数据
         return {"kind": "diag",
@@ -523,6 +523,8 @@ def monitor(link, seconds):
                     if d["statusBits"] & 0x04: flags.append("本拍调了Set_pwm")
                     # 关键判据：算了但没执行（被 Turn_Off/Flag_Stop 挡）时 CCR 会明显小于 |Moto|
                     blocked = abs(d["moto1"]) > 50 and d["ccrA"] == 0
+                    bid = d.get("buildId", 0)
+                    print(f"  [固件版本 0x{bid:02X} = {bid >> 4}月{bid & 0x0F}日]")
                     print(f"  CTRL Bal={d['balancePwm']:6d} Vel={d['velocityPwm']:6d} "
                           f"Turn={d['turnPwm']:6d} | Moto={d['moto1']:6d}/{d['moto2']:6d} "
                           f"→ CCR={d['ccrA']:5d}/{d['ccrB']:5d}  Enc={d['encLeft']:5d}/{d['encRight']:5d}"
