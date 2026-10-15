@@ -66,14 +66,12 @@ int EXTI15_10_IRQHandler(void)
 			}                                                                   //10ms控制一次，为了保证M法测速的时间基准，首先读取编码器数据
 			Encoder_Left=Read_Encoder(2);                                    		//===读取编码器的值
 			Encoder_Right=Read_Encoder(4);
-#if CFG_ENCODER_DIR_INVERT
 			#if CFG_ENCODER_LEFT_INVERT
 			Encoder_Left=-Encoder_Left;
 #endif
 #if CFG_ENCODER_RIGHT_INVERT
 			Encoder_Right=-Encoder_Right;
 #endif
-#endif                                   		//===读取编码器的值
 #ifdef USE_FREERTOS
 			/* ★ B（固件）2026-10-09（决策 49）：把这一拍（10 ms）的编码器计数累进里程计，
 				供巡检状态机判断"走到下一个巡检点"。
