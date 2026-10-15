@@ -93,7 +93,11 @@ int EXTI15_10_IRQHandler(void)
 			Flag_Stop=0;	                                                      //===如果被放下就启动电机
 #endif
       if(Turn_Off(Angle_Balance,Voltage)==0)                              //===如果不存在异常
-				Set_Pwm(Moto1,Moto2);                                               //===赋值给PWM寄存器
+				#if CFG_MOTOR_DIR_INVERT
+				Set_Pwm(-Moto1,-Moto2);      /* ★ 按当前接线翻向（见 app_config.h）*/
+#else
+				Set_Pwm(Moto1,Moto2);
+#endif                                               //===赋值给PWM寄存器
 			if(Bi_zhang==0)Led_Flash(100);                                      //===LED闪烁;常规模式 1s改变一次指示灯的状态
 			else           Led_Flash(0);                                        //===LED闪烁;超声波模式 指示灯常亮
 			Key();                                                              //===扫描按键状态 单击双击可以改变小车运行状态
