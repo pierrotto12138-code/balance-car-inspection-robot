@@ -61,6 +61,7 @@ public:
     const EnvData &env() const { return m_env; }
     const DiagData &diag() const { return m_diag; }
     const LoopData &loop() const { return m_loop; }
+    const PidTuneData &pidEcho() const { return m_pidEcho; } ///< 最近一条 0x24 回读/回执
     const EventData &lastEvent() const { return m_lastEvent; }
 
     // ---- 来源与新鲜度（"谁给的、多久以前"）----
@@ -150,6 +151,7 @@ private:
     EnvData m_env;
     DiagData m_diag;
     LoopData m_loop;
+    PidTuneData m_pidEcho;
     EventData m_lastEvent;
 
     QHash<quint8, Record> m_rec; ///< 命令字 → 最近一次收到的来源与时刻

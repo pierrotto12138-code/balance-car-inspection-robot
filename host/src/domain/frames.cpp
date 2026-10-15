@@ -5,6 +5,8 @@
 
 #include <QStringList>
 
+#include <cstring>
+
 namespace domain {
 
 namespace {
@@ -144,6 +146,22 @@ bool decodeLoop(const QByteArray &d, LoopData &out)
     return true;
 }
 
+bool decodePidTune(const QByteArray &d, PidTuneData &out)
+{
+    if (d.size() != 6) {
+        return false;
+    }
+    const uint8_t *p = bytes(d);
+    PidTuneData v;
+    v.paramId = p[0];
+    v.reserved = p[1];
+    const quint32 bits = proto::getU32(p + 2);
+    static_assert(sizeof(float) == 4, "协议假定 float32");
+    std::memcpy(&v.value, &bits, sizeof(float));
+    out = v;
+    return true;
+}
+
 int expectedUpLen(quint8 cmd)
 {
     switch (cmd) {
@@ -163,6 +181,8 @@ int expectedUpLen(quint8 cmd)
         return 20;
     case proto::up::kHeartbeat:
         return 0;
+    case proto::down::kPidTune: // 0x24 的回显（下行命令也会上行回来，见 PidTuneData 注释）
+        return 6;
     default:
         return -1;
     }

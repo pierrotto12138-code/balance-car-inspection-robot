@@ -247,6 +247,16 @@ void VehicleState::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data
         }
         break;
     }
+    case proto::down::kPidTune: {
+        // 0x24 是我们自己下发的命令，但机器人会把**实际生效值**回显上来（协议 §4.2），
+        // 所以它同时是一条合法上行帧 —— 回读确认就走这条路。
+        PidTuneData v;
+        ok = decodePidTune(data, v);
+        if (ok) {
+            m_pidEcho = v;
+        }
+        break;
+    }
     case proto::up::kEvent: {
         ok = decodeEvent(data, evData);
         haveEvent = ok;
@@ -370,6 +380,7 @@ void VehicleState::reset()
     m_env = EnvData{};
     m_diag = DiagData{};
     m_loop = LoopData{};
+    m_pidEcho = PidTuneData{};
     m_lastEvent = EventData{};
     m_rec.clear();
     for (int i = 0; i < static_cast<int>(io::LinkKind::Count); ++i) {

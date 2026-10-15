@@ -127,6 +127,19 @@ struct LoopData {
     }
 };
 
+/// 0x24 PID 调参回读（N=6，协议 §4.2）—— **下行命令的上行回显**：
+/// 机器人收到 0x24 后把**实际生效值**按同样格式回发一次，上位机据此确认写入成功
+/// （避免"以为改了、其实没收到"）。扩展 ID 也用它回执：
+/// `0x00`=保存成功 / `0xFE`=从 Flash 载入成功 / `0xFD`=观测模式当前状态（值 1 或 0）。
+struct PidTuneData {
+    quint8 paramId = 0;
+    quint8 reserved = 0;
+    float value = 0.0f; ///< IEEE-754 小端（协议 §七 约定 5）
+
+    /// 是否是扩展 ID 的回执（不是真实增益）
+    bool isAck() const { return paramId == 0x00 || paramId == 0xFE || paramId == 0xFD; }
+};
+
 // ---- 解析（返回 false = 长度不符/未识别，调用方应计数并保留旧值）----
 bool decodePose(const QByteArray &d, PoseData &out);
 bool decodeMotion(const QByteArray &d, MotionData &out);
@@ -135,6 +148,7 @@ bool decodeEvent(const QByteArray &d, EventData &out);
 bool decodeEnv(const QByteArray &d, EnvData &out);
 bool decodeDiag(const QByteArray &d, DiagData &out);
 bool decodeLoop(const QByteArray &d, LoopData &out);
+bool decodePidTune(const QByteArray &d, PidTuneData &out);
 
 /// 协议规定的上行数据段长度（-1 = 本版本协议未定义该命令）
 int expectedUpLen(quint8 cmd);
