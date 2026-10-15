@@ -126,6 +126,31 @@ int velocity(int encoder_left,int encoder_right)
 {
      static float Velocity,Encoder_Least,Encoder,Movement;
 		static float Encoder_Integral,Target_Velocity;
+
+		/* ★ B 2026-10-13 修正（平衡审查报告的 P0，也是"只改一处"的结论）：
+		   停机/保护态时，把速度环的**全部**状态在函数入口一次清干净，并直接返回 0。
+		   为什么必须改（三件事叠在一起）：
+		     ① **顺序错**：原来只在函数末尾 `if(Turn_Off(...)||Flag_Stop) Encoder_Integral=0;`
+		        清零，而这一拍在它之前**已经用旧积分算过 Velocity** —— 也就是"先用了再清"。
+		        （该拍不会真驱动电机，因为主循环里 `Turn_Off` 同样返回 1 会跳过 `Set_Pwm`，
+		          所以这是"算了不该算的"，不是"输出了不该输出的"。）
+		     ② **Encoder / Encoder_Least 从不清零**：停机期间人工挪过轮子后重新使能，
+		        第一拍会按"停机前的滤波速度"出力 → 起步抽一下，现场极易被误判成机械问题。
+		     ③ **量级不对称**：积分满幅 `K_i×10000 = 4000 PWM`，而平衡环 P 项 1° 才 300 PWM
+		        —— 积分一旦朝错误方向饱和，平衡环的整个工作范围都扳不回来（这就是
+		        "速度环一调大就必摔"的机理）。
+		   返回 0 让"停机 = 速度环零出力"成为明确语义，而不是靠末尾清零兜底。
+		   判据用与本拍输出**同一拍**的 Angle_Balance/Voltage，与主循环一致；
+		   同时把 `Turn_Off()` 每拍的调用次数从 2 降到 1（原来函数末尾还会再调一次）。*/
+		if(Turn_Off(Angle_Balance,Voltage)==1||Flag_Stop==1)
+		{
+			Encoder_Integral=0;
+			Encoder=0;
+			Encoder_Least=0;
+			Movement=0;
+			return 0;
+		}
+
 		//=============遥控前进后退部分=======================//
 		if(Bi_zhang!=0&&Flag_sudu==1)  Target_Velocity=55;                 //如果进入避障模式,自动进入低速模式
     else 	                         Target_Velocity=110;
@@ -152,7 +177,8 @@ int velocity(int encoder_left,int encoder_right)
 
 		if(Flag_Hover==1)Zhongzhi=-Encoder/10-Encoder_Integral/300;       //这些斜坡悬停使用的算法
 
-		if(Turn_Off(Angle_Balance,Voltage)==1||Flag_Stop==1)   Encoder_Integral=0;      //===电机关闭后清除积分
+		/* ★ 2026-10-13：此处的"末尾清零"已上移到函数入口（见 velocity() 开头的说明）——
+		   放在这里等于"先用旧积分算完 Velocity 再清零"，顺序是错的。*/      //===电机关闭后清除积分
 		return Velocity;
 }
 
