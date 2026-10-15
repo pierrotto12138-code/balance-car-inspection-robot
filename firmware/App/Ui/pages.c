@@ -226,7 +226,9 @@ void Pages_Show(void)
 		return;                     /* 厂商页由 UiTask 调 APP_Show()/oled_show() 绘制 */
 	}
 
-	OLED_Clear();                   /* 换页会留残影，先清屏 */
+	/* 注意：这里**不再每拍清屏**。清屏改由 `ui_task` 在"换页那一拍"统一做
+	   （见 app_tasks.c 里的 s_lastPage 逻辑）—— 每拍清屏虽能消残影，
+	   但 10 Hz 的"清屏+重绘"会让人眼看到明显闪烁。*/
 	if (Flag_Page == PAGE_GAS)
 	{
 		show_gas_page();

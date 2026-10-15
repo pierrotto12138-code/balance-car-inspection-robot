@@ -591,6 +591,19 @@ static void ui_task(void *arg)
 		Board_ReadRaw(&bs);
 		if (bs.showFlag == 0)
 		{
+			/* ★ B 2026-10-13 修正（用户实测"有个第三页像两页重合"）：
+			   厂商 `oled_show()` **只覆盖它自己那几个固定坐标的字段、从不整屏清**，
+			   而自研页（1/2）用的 x/y 与它不同 → 从自研页切回厂商页时，
+			   厂商页没写到的地方**留着上一页的残字**，看起来就是"两页重合"。
+			   修法：**只在换页的那一拍清屏**（不是每拍清，否则 10 Hz 清屏会明显闪烁）。
+			   清屏放在这里而不是 `Pages_Next()`：后者在**控制中断**里被调用，
+			   整屏刷新要 1~2 ms，放中断里会拖坏 5 ms 控制节拍。*/
+			static uint8_t s_lastPage = 0xFF;
+			if (s_lastPage != Flag_Page)
+			{
+				OLED_Clear();
+				s_lastPage = Flag_Page;
+			}
 			if (Flag_Page == PAGE_VENDOR)
 			{
 				/* ★ 2026-10-13 真机联调发现并移除：这里原本还调了厂商的 `APP_Show()`。
