@@ -16,7 +16,7 @@
 | PCB（板「改」） | ✅ 完工 —— 523 走线段 / 76 过孔 / **双面实心 GND 铺铜** / **DRC 零错误零未连接** |
 | 打样与采购 | ✅ **全部到货，已焊好并上板联调**（2026-10-15 第二轮真机联调）|
 | 真机台架 | 🔶 **只有 MQ-135，插在 `J13`**（`J10` 空、MQ-2 模块已烧毁待补）；DHT11 正常；电池 **11.8 V**；**OLED 正常显示**（页 1 / 页 2 / 厂商页）——即"传感器全未就绪""OLED 乱码"等**旧现象均已解决**（见 [`真机联调问题清单.md`](docs/design_firmware/真机联调问题清单.md) §6/§7）|
-| 固件 B / 上位机界面 C | ✅ **B：完成**（2026-10-15 真机稳定平衡、出厂参数定稿；详见问题清单 §8）（GCC 构建出 `.hex`；**离线核验 9 项全通过**：协议 117 + 传感器 1235 + 状态机 80 + 调参 29 条断言、`tune.py --selftest`、交叉编译、向量表、中断安全、引脚基线；现占用 **Flash 约 66.5 KB / RAM 约 32.8 KB**；四任务已跑起来、程序说明文档已出 → [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)）；**C：P0~P4 已完成** —— `io/` 链路层 + 通信诊断面板 + 假源回放（P0）、`domain/`（units/frames/vehicle_state）+ 总览与状态位（P1）、曲线与告警 + 事件流（P2）、巡检与任务控制 + 保活（P3）、**调参与记录（0x24 全流程 + Flash + 观测模式 + CSV/SQLite + 回放）**（P4）；`ctest` **7/7**（协议 13 + 链路 8 + domain 15 + 界面 11 + 告警 13 + 命令/保活 13 + 记录/回放/参数 12），`host.exe --selftest` 退出码 0，**真机 `--probe-readback` 已取回 7 个实际生效值并按 B 侧口径对齐**（决策 73/74）；方案与计划见 [`docs/design_host/C部分方案与计划.md`](docs/design_host/C部分方案与计划.md)（**P5 待做**），**协议 v1.2 为当前版本**（v1.1 冻结 + 0x15/0x16 增量）|
+| 固件 B / 上位机界面 C | ✅ **B：完成**（2026-10-15 真机稳定平衡、出厂参数定稿；详见问题清单 §8）（GCC 构建出 `.hex`；**离线核验 9 项全通过**：协议 117 + 传感器 1235 + 状态机 80 + 调参 29 条断言、`tune.py --selftest`、交叉编译、向量表、中断安全、引脚基线；现占用 **Flash 约 66.5 KB / RAM 约 32.8 KB**；四任务已跑起来、程序说明文档已出 → [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)）；**C：P0~P5 已完成（C 部分收工）** —— P0 链路层 + 通信诊断面板 + 假源回放、P1 `domain/` + 总览与状态位、P2 曲线与告警 + 事件流、P3 巡检与任务控制 + 保活、P4 调参与记录（0x24 全流程 + CSV/SQLite + 回放）、**P5 打包与交付文档**（`host/package.ps1` 一键出**便携目录 12 文件 / 37.4 MB**，干净 PATH 下四项校验全过；交付文档 [`软件设计说明`](docs/design_host/软件设计说明.md)/[`用户操作手册`](docs/design_host/用户操作手册.md)/[`演示脚本`](docs/design_host/演示脚本.md)）；`ctest` **7/7**（协议 13 + 链路 8 + domain 15 + 界面 11 + 告警 13 + 命令/保活 13 + 记录/回放/参数 12），`host.exe --selftest` 退出码 0，**真机 `--probe-readback` 已取回 7 个实际生效值并按 B 侧口径对齐**（决策 73~76）；方案与计划见 [`docs/design_host/C部分方案与计划.md`](docs/design_host/C部分方案与计划.md)，**协议 v1.2 为当前版本**（v1.1 冻结 + 0x15/0x16 增量）|
 
 **⚠️ 现在不要动 EDA 工程**，除非用户明确要求。板子**已打样并焊好、正在真机联调**（2026-10-15），此时改动会引入版本混乱。
 > 仅需注意：`docs/design_hardware/` 下描述 **EDA 操作步骤**的两章是**完工前的作业稿**，仅供理解当时的判断依据
@@ -180,6 +180,7 @@ pwsh -NoProfile -File tools\eda_exec.ps1 -CodeFile tools\eda_pcb_overview.js
 | **40** | **★★ 保活（防失联锁存）绝不能用"使能类"命令** —— 固件规定 **500 ms 没有下行帧 ⇒ 安全停车并锁存**（硬件按键也解不开），所以上位机必须周期发合法下行帧；**但只能用 `0x1F` 心跳**：协议 v1.1 明确"收到显式使能（`0x20` 使能位=1 或 `0x21` 任务=自主巡航）**即解除安全锁存**" ⇒ 若拿 `0x20 enable=1` 当保活周期发，就等于**每 200 ms 自动把急停保护拆掉一次**，而界面上一切看起来都正常（铁律 29 的旁路）。C 侧实现见 `domain/keepalive.*`（默认心跳、200 ms、链路不通不发、打开/恢复链路时立刻发第一条），决策 69。**同时**：锁存期间要用**禁用按钮**兜底而不是提示语（决策 70）。 |
 | **41** | **★ 启动期"多段覆盖"是后者胜 —— 顺序必须显式核对** —— 本项目启动时先由 `CFG_DEBUG_PARAM_OVERRIDE` 把出厂值写进参数（速度环 −80/−0.4），紧随其后的 `CFG_DEBUG_DISABLE_VELOCITY`（调试用"摘速度环"）又把速度环清 0 ⇒ **后者把前者覆盖**，速度环**其实从未运行**：现象是"漂移怎么调都治不好""改 Zhongzhi 忽前忽后"，而代码里两段各自看都对。**规则**：凡在启动流程里放多段"覆盖/初始化"逻辑，必须**把顺序与优先级写进注释并逐条核对**；判断"某环到底有没有跑"要看 `0x16` 的分量（`Vel` 恒 0 = 没跑），不要看开关写了什么。 |
 | **42** | **★★ 监控端的判据必须与执行机构（固件）同口径** —— 否则界面会"把正确值判成非法"或"报出不存在的故障"。P4 一轮里 C 侧连中两次：① **参数范围**照协议表写成 `0~500`（`Ki 0~0.82`），而本机因电机/编码器符号相反**正确值是负的**（`Velocity_Kp/Ki = −80/−0.4`，决策 71）⇒ 前端校验把板子上的正确值判为非法（现象只是"界面上不让填"）；② **低压报警**只看 `<11.1 V`，而固件对"分压悬空/没接电池"有 **6.00 V 门槛**（决策 60）⇒ 真机 USB 供电（`0x15` 实测 ≈4.3 V）时界面报红，而车其实"只是没接电池"；解除线也取错（11.4 vs 固件自动解除的 **11.6** ⇒ 界面说已解除、车还锁着）。**规则**：写任何前端判据前，先读 [`给C侧_固件接口与判读口径.md`](docs/handoff/给C侧_固件接口与判读口径.md)（B→C 接口交接），并**用真机数据核对** —— C 侧常备工具 `host.exe --probe COMx --probe-readback`（**只读**全量回读 + 逐项对照）。**同类**：`Moto≠0 而 CCR=0` 要分"保护中（未使能/锁存 ⇒ 正常）"与"未停车却没执行（真故障）"，一律报红等于把正常状态说成 bug（决策 74）。 |
+| **43** | **★★ 打包要"Release 树 + 删了再验 + 干净 PATH 复验"，而且校验方式本身也可能是错的**（P5，四个坑全踩过）—— ① **`windeployqt` 参数写错时只打印一行 `Unknown option` 然后什么都不部署**：本项目把 `--no-system-d3d-compiler:$false` 写进去，结果打出一个"看似成功"的**空包** ⇒ 生成后**必须立刻硬校验**必需文件（`Qt6Core/Gui/Widgets`、`platforms/qwindows.dll`、`sqldrivers/qsqlite.dll`）；② **它只部署当前平台的 `platforms/qwindows.dll`，没有 `qoffscreen.dll`** ⇒ 在便携目录里跑 `-platform offscreen` 必然失败，报 `Could not find the Qt platform plugin "offscreen"` —— **这次是校验方式错了，不是包错了**：交付目录要用**真实平台插件**验证（那才是"双击"的路径），无头 offscreen 只适合开发机构建目录；③ **交付要用 Release**：本项目 Debug 的 `host.exe` **41.5 MB**、Release **3.2 MB**（Debug 还是 `-O0`）；④ **瘦身之后必须重新验证**：删掉 D3D12/D3D11 着色器编译器、QML/Network/SVG、多余 SQL 驱动、图片格式插件后（109 → 37.4 MB），要逐条跑通"自检 / 界面起来 / 截图落盘 / **录制后 SQLite 会话库真的建起来**"——尤其**少了 `qsqlite.dll` 程序不会报错，只是会话库静默降级**，这类"静默降级"必须用**产物存在性**去验（本项目就靠"会话库文件 >8 KB"这条断言挡住）。**铁律**：凡"打包/部署/复制"类操作，必须能说出**在干净环境里跑通的证据**（把 Qt/MinGW 从 PATH 里移除后再跑）。 |
 
 ---
 
@@ -216,6 +217,9 @@ pwsh -NoProfile -File tools\eda_exec.ps1 -CodeFile tools\eda_shortcheck.js
 # 文件层独立核验（EDA 可关闭）
 python hardware\sch_netlist.py "<...>\sch\Schematic2\P1.esch2"
 python tools\sch_watch.py
+
+# 文档链接检查（★ 文档整合/挪动图片后必跑；断链在 Markdown 里是静默的）
+python tools\check_doc_links.py
 
 # 渲染
 pwsh -NoProfile -File tools\eda_exec.ps1 -CodeFile tools\eda_render_pcb.js   # PCB
@@ -259,7 +263,7 @@ python ..\tools\fw_prep\gen_test_vectors.py       # 协议测试向量（B/C 共
 
 - **文档中文，工程目录英文。**
 - **改动前先看对应文档**：硬件 → `docs/design_hardware/`；协议 → `docs/protocol/`。
-- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 74）。
+- **决策要记进 [`docs/决策记录.md`](docs/决策记录.md)**（连续编号，现已到 **76**）。
 - **固件（B）相关**：开工准备与核验记录在 [`docs/design_firmware/B阶段开工准备.md`](docs/design_firmware/B阶段开工准备.md)；
   构建 = `arm-none-eabi-gcc` + Makefile（**必须产出 `.hex`**，用 FlyMcu 串口 ISP 烧录），**不考虑 Keil 交付**（决策 34）。
 - **新读者入口**：[`docs/文档索引.md`](docs/文档索引.md)；**接手**：[`docs/handoff/交接说明.md`](docs/handoff/交接说明.md)。
@@ -299,6 +303,6 @@ python ..\tools\fw_prep\gen_test_vectors.py       # 协议测试向量（B/C 共
 
 1. `tools/eda_pcb_overview.js` → **间距违规 0 · 未连接 0**（GND 除外的网络）
 2. **铺铜是 `solid`**，且**布线后已重建**
-3. 文档链接无断链（全仓库扫一遍 `](...)`）
+3. 文档链接无断链（`python tools\check_doc_links.py` ⇒ **断链 0 条**；不要靠眼睛扫 `](...)`）
 4. 重要节点已快照到 `hardware/`，**MD5 与工程一致**
 5. `docs/决策记录.md` 已记下新决策

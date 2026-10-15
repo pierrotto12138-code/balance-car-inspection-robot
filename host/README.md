@@ -3,13 +3,13 @@
 > 📋 **开工前先读**：[`../docs/design_host/C部分方案与计划.md`](../docs/design_host/C部分方案与计划.md) —— 调研结论 / 技术选型 / 五层模块 / 线程与数据模型 / UI 布局与配色 / P0~P5 计划。
 > 📄 **协议基线**：[`../docs/protocol/communication_protocol.md`](../docs/protocol/communication_protocol.md) **v1.2**（v1.1 冻结版 + `0x15` 诊断 / `0x16` 三环实况增量；含 §七 给上位机的显示约定 13 条）。
 
-> **状态：P0~P4 全部完成**（2026-10-15）—— `protocol/` + `io/` + `domain/`（units/frames/vehicle_state/alarm/commands/keepalive）+ `data/`（event_log/**param_store/recorder**）+ 七个界面页
-> （总览 / 巡检与控制 / 曲线与告警 / **调参与记录** / 事件流 / 通信链路 / 协议自检）。
+> **状态：P0~P5 全部完成（C 部分收工）**（2026-10-15）—— `protocol/` + `io/` + `domain/`（units/frames/vehicle_state/alarm/commands/keepalive）+ `data/`（event_log/param_store/recorder）+ 七个界面页
+> （总览 / 巡检与控制 / 曲线与告警 / 调参与记录 / 事件流 / 通信链路 / 协议自检）+ **一键打包**（`package.ps1` → 便携目录 **12 文件 / 37.4 MB**，免装 Qt）。
 > `ctest` **7/7 通过**（协议 13 + 链路 8 + domain 15 + 界面 11 + 告警 13 + 命令/保活 13 + **记录/回放/参数 12**）；`host.exe --selftest 3 -platform offscreen` 退出码 **0**。
 > **没有板子也能开发/演示**：假源内置剧本（每 30 s 气体冲高、每 60 s 急停锁存→解除、50~56 s 低压），
 > `--demo --rate 5` 约 12 s 就能把"报警 → 曲线留痕 → 事件流留档 → 锁存 → 重下任务解除"整套演完；`--play 记录.csv` 可用录制数据驱动整个界面。
 > **有板子时**：`--probe COM3 --probe-readback` 一条命令把"链路 / 各命令字条数 / 状态聚合 / **0x24 七个实际生效值逐项对照** / 0x16 判读"一次打全（**只读**，见 §二之三）。
-> 只剩 P5（`windeployqt` 打包 + 软件设计说明 + 用户操作手册）。
+> 交付文档：[软件设计说明](../docs/design_host/软件设计说明.md) · [用户操作手册](../docs/design_host/用户操作手册.md) · [演示脚本](../docs/design_host/演示脚本.md)。
 
 > 📌 **来自 B 侧的对接说明（2026-10-09，务必看一下）**
 > 1. **协议测试向量已就绪**：[`../docs/protocol/test_vectors.json`](../docs/protocol/test_vectors.json)（`.tsv` 便于脚本比对）——
@@ -40,7 +40,7 @@
 | `src/domain/` 领域层 | ✅ **P1~P3 完成** | `units`（协议定点量的**唯一**换算与格式化处）、`frames`（8 类上行帧结构体 + **精确长度**校验的解析 + 名称表）、`vehicle_state`（双链路合并 + **跨链路去重**、来源与新鲜度、格式错帧/协议外命令/重复帧计数、安全锁存判定、OLED 写速率与四任务 tick 存活）、`alarm`（连续确认 + 迟滞 + 状态跃变才报）、**`commands`（下行数据段唯一出处 + 安全影响分类）**、**`keepalive`（默认心跳 0x1F 保活，防固件 500 ms 判失联）** |
 | `src/data/` 数据层 | ✅ **P2/P4 完成** | `event_log`（机器人事件/本机告警/**操作员动作**同轴，安全事件成对给停车时长）、**`param_store`**（7 个 PID 参数的定义/范围/默认值 + **下发前校验** + **下发↔回读配对** + 巡检参数账本）、**`recorder`**（**CSV 逐帧 42 列含原始帧 HEX** + **SQLite 会话/事件/参数三表**）|
 | `src/ui/` 界面 | ✅ **P1~P4 完成** | **总览**（姿态+人工地平仪 / 运动 / 电源环境 / 任务巡检 / 诊断 / 状态位 LED / 链路来源 + 安全横幅 + **0x16 判读结论**）、**巡检与控制**（阶段时间轴 + 任务下发/急停/解除锁存 + 保活 + 按住走松手停）、**曲线与告警**（四张通道独立曲线 + 阈值线 + 告警标记 + 十字定标）、**调参与记录**（参数表 / Flash / 观测模式 / 三环曲线 / 下发日志）、**事件流**、**通信链路**、协议自检；状态条含假源水印·保活·**录制**·**固件版本** |
-| 打包与文档（P5） | ⬜ | `windeployqt` + 软件设计说明 + 用户操作手册 |
+| 打包与文档（P5） | ✅ **完成** | `package.ps1`：Release 树 → `windeployqt` → 瘦身（**109 → 37.4 MB**）→ **干净 PATH 下四项校验**；产出 `dist/上位机/`（12 文件）；交付文档三份见 §二之八 |
 
 ## 二、构建与测试
 
@@ -108,7 +108,7 @@ ctest --test-dir build --output-on-failure
 ./build/host.exe --probe COM3 --probe-readback -platform offscreen
 
 # ② 自动截图（文档里的界面截图用它生成，界面改了重跑一次即可，不会出现"图过期"）
-./build/host.exe --demo --rate 5 --shot ../docs/design_host/P4_调参与记录.png \
+./build/host.exe --demo --rate 5 --shot ../docs/design_host/图/P4_调参与记录.png \
                  --shot-delay 13000 --shot-tab 3
 #    · 无显示器时加 -platform offscreen，并设 QT_QPA_FONTDIR=C:\Windows\Fonts（否则没有字体，整屏方框）
 #    · --shot-tab：0=总览 1=巡检与控制 2=曲线与告警 3=调参与记录 4=事件流 5=通信链路 6=协议自检
@@ -146,7 +146,7 @@ src/protocol/
 
 ## 二之二、P0 怎么用（含**没有板子**时怎么开发）
 
-![P0 通信链路面板](../docs/design_host/P0_通信链路面板.png)
+![P0 通信链路面板](../docs/design_host/图/P0_通信链路面板.png)
 
 > 假源模式下两条链路都在跑：统计在涨、HEX 日志滚动（AA 55 10 0C … = 0x10 姿态 N=12；AA 55 11 09 … = 0x11 运动 N=9）。
 
@@ -172,7 +172,7 @@ src/protocol/
 
 ## 二之四、P1 怎么用（总览面板 / 怎么看"有没有异常"）
 
-![P1 总览面板](../docs/design_host/P1_总览面板.png)
+![P1 总览面板](../docs/design_host/图/P1_总览面板.png)
 
 **一屏之内回答四个问题**（这也是 P1 的验收口径）：
 
@@ -205,8 +205,8 @@ src/protocol/
 
 ## 二之五、P2 怎么用（曲线与告警 / 事件流）
 
-![P2 曲线与告警](../docs/design_host/P2_曲线与告警.png)
-![P2 事件流](../docs/design_host/P2_事件流.png)
+![P2 曲线与告警](../docs/design_host/图/P2_曲线与告警.png)
+![P2 事件流](../docs/design_host/图/P2_事件流.png)
 
 **曲线页**（② 曲线与告警）：四张**通道独立**的图（MQ-2 / MQ-135 / 电压 / 温湿度），每张图上方一个当前值卡片；
 图上有一条**阈值/低压参考线**（虚线），告警发生与解除会在当时的时刻打**竖线标记**（红=发生、绿=解除）。
@@ -235,7 +235,7 @@ src/protocol/
 
 ## 二之六、P3 怎么用（巡检与控制 / 保活）
 
-![P3 巡检与控制](../docs/design_host/P3_巡检与控制.png)
+![P3 巡检与控制](../docs/design_host/图/P3_巡检与控制.png)
 
 | 区域 | 内容 | 要点 |
 |---|---|---|
@@ -252,7 +252,7 @@ src/protocol/
 
 ## 二之七、P4 怎么用（调参与记录）
 
-![P4 调参与记录](../docs/design_host/P4_调参与记录.png)
+![P4 调参与记录](../docs/design_host/图/P4_调参与记录.png)
 
 **调参页**（④ 调参与记录）：
 
@@ -282,6 +282,35 @@ src/protocol/
 | 回放 | `--play out.csv` 或 文件菜单 | 记录里的十六进制列喂回**假源链路**（与真链路同一套解帧/聚合路径）⇒ 界面上一切照常动，**不需要硬件** |
 | 快速截图 | `F11` | 存到 `AppDataLocation/shots/`，路径自动进剪贴板（写报告直接粘贴）|
 
+## 二之八、交付与打包（P5）
+
+```powershell
+# ① 交付构建（Release：host.exe 3.2 MB；Debug 树是 41.5 MB —— 别用 Debug 交付）
+cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+ctest --test-dir build-release --output-on-failure     # 期望 7/7
+
+# ② 一键打包 → dist/上位机/（便携目录：拷到没装 Qt 的电脑双击即可）
+pwsh -File package.ps1
+```
+
+`package.ps1` 做**四项校验**（缺一不可，且都在**把 Qt/MinGW 从 PATH 移除后**执行）：
+
+| # | 校验 | 通过判据 |
+|---|---|---|
+| ① | 无头自检 | `host.exe --selftest 3` 退出码 **0**（用**真实平台插件**：便携目录里没有 `qoffscreen.dll`） |
+| ② | 界面冒烟 | 用 `--demo` 把窗口真起起来，4 s 不异常退出 |
+| ③ | 截图链路 | 窗口渲染 → `grab` → PNG 落盘（>20 KB） |
+| ④ | 记录链路 | `--record` 跑 5 s：CSV 有行 + **SQLite 会话库真的建起来**（少了 `qsqlite.dll` 只会静默降级，所以必须验产物） |
+
+**产物**：12 个文件 / 约 37 MB（`windeployqt` 原始 109 MB；删掉 D3D12/D3D11 着色器编译器、
+QML/Network/SVG、多余 SQL 驱动、图片格式插件 —— 纯 QWidgets 程序不需要，每项都"删了再验"）。
+
+**交付文档分工**：README（本文件）讲**代码怎么构建、命令怎么用**；
+[软件设计说明](../docs/design_host/软件设计说明.md) 面向**评阅/接手**；
+[用户操作手册](../docs/design_host/用户操作手册.md) 面向**现场操作**；
+[演示脚本](../docs/design_host/演示脚本.md) 面向**答辩演示**。
+
 ## 四、待实现的界面（按任务书要求）
 
 | 面板 | 内容 | 状态 |
@@ -300,10 +329,11 @@ src/protocol/
 
 ## 五、交付物
 
-- [x] 完整源代码工程（CMake 一键构建；`ctest` 7/7）
-- [ ] 可执行程序（含依赖打包说明）→ P5 `windeployqt`
-- [ ] 软件设计说明文档 → P5
-- [ ] 用户操作手册 → P5
+- [x] 完整源代码工程（CMake 一键构建；`ctest` 7/7；`package.ps1` 一键打包便携目录）
+- [x] 可执行程序（含依赖打包说明）→ P5：`package.ps1` → `dist/上位机/`（12 文件 / 37.4 MB，免装 Qt）
+- [x] 软件设计说明文档 → [`../docs/design_host/软件设计说明.md`](../docs/design_host/软件设计说明.md)
+- [x] 用户操作手册 → [`../docs/design_host/用户操作手册.md`](../docs/design_host/用户操作手册.md)
+- [x] 演示脚本与界面截图 → [`../docs/design_host/演示脚本.md`](../docs/design_host/演示脚本.md) + `../docs/design_host/P0~P4_*.png`（6 张）
 
 ## 六、变更记录
 
@@ -316,3 +346,4 @@ src/protocol/
 | 2026-10-15 | **P2 完成**：QCustomPlot 2.1.1 内置为 `third_party/qcustomplot`（未改动、只对该目标关告警）+ `domain/alarm`（连续确认/迟滞/状态跃变才报）+ `data/event_log`（安全事件成对给停车时长）+ 曲线页 + 事件流页 + `--rate` 开关；`ctest` **5/5**（新增告警/事件流 13 项与界面 3 项）。修掉两个坑：**两条链路都发同样的帧 ⇒ 事件流重复 + 连续确认被 1.5 帧满足**（去重移到聚合层，决策 67）、低压判据把"高=坏"写死导致**低压保护静默失效**（决策 68）；另修 `QCustomPlot::removeItem()` 已自删导致的 double free |
 | 2026-10-15 | **P3 完成**：`domain/commands`（下行数据段唯一出处：0x20/0x21/0x22/0x23/0x24/0x2F/0x1F，带钳位与安全影响分类）+ `domain/keepalive`（默认心跳、200 ms、链路不通不发）+ 巡检与控制页（阶段时间轴 / 任务下发 / 急停 / 解除锁存 / 保活 / 按住走松手停）+ 事件流增加操作员动作留档；`ctest` **6/6**（新增命令/保活 13 项与界面 3 项）。两条安全纪律落进代码：**保活只能用心跳**（使能保活会周期性解除锁存，决策 69）、**锁存期间禁用起点类入口**（决策 70）；另修"值更新后副标题仍写着无数据"的陈旧显示并加回归测试 |
 | 2026-10-15 | **P4 完成 + 按 B 侧《给 C 侧：固件接口与判读口径》对齐真机**：`data/param_store`（参数定义/前端校验/下发↔回读配对/巡检参数）+ `data/recorder`（CSV 逐帧 42 列含 HEX + SQLite 三表）+ 调参与记录页（参数表/Flash/观测模式/三环曲线/下发日志）+ `--record`/`--play` + 文件菜单；`ctest` **7/7**（新增记录/回放/参数 12 项与界面 1 项）。**真机 `--probe-readback` 取回 7 个实际生效值**（固件 0xAF/10-15），据此对齐三处会在界面上误导人的口径：① 参数**必须允许负值**（本机定稿 −80/−0.4，原先的 0~500 校验会把正确值判为非法）；② 低压报警先过 **6 V"有没有电池"门槛**、解除线改 **11.6 V**（真机 USB 供电报 ≈4.3 V，原逻辑会假报警）；③ **"算了没执行"分级**（未使能时 `CCR=0` 是保护生效，琥珀"保护中，未驱动"；只有未停车却 `CCR=0` 才报红）。另：`0x11` 的 PWM 字段真机上报的是带符号电机输出（−1579），界面**标注**而不截断 |
+| 2026-10-15 | **P5 完成（C 部分收工）**：`package.ps1` 一键打包（**Release 树** → `windeployqt` → 瘦身 **109 → 37.4 MB** → **干净 PATH 下四项校验**：无头自检 / 界面真起来 / 截图落盘 / **CSV 有行 + SQLite 会话库真的建起来**），产出便携目录 **12 文件**；新增 `--db` 指定会话库路径；三份交付文档（[软件设计说明](../docs/design_host/软件设计说明.md) / [用户操作手册](../docs/design_host/用户操作手册.md) / [演示脚本](../docs/design_host/演示脚本.md)）。这一轮踩到四个打包坑（已写进 AGENTS 铁律 43）：`windeployqt` 参数写错会**静默打出空包**、它**不部署 `qoffscreen.dll`**（便携目录的校验必须改用**真实平台插件**）、Debug 树 41.5 MB vs Release 3.2 MB、少了 `qsqlite.dll` **不报错只静默降级**。另：`.gitignore` 增加 `host/build*/`、`host/dist/`（构建产物与 37 MB 的包不进仓库）|

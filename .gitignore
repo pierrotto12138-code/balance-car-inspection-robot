@@ -122,3 +122,8 @@ __pycache__/
 
 # 编辑器代码索引产物（由 make compile_commands 生成，本机专用）
 firmware/compile_commands.json
+
+# C 侧上位机（角色 C）：构建产物与打包目录都不进仓库
+host/build*/
+host/dist/
+host/.qt/

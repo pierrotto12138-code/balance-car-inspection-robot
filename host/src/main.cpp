@@ -587,6 +587,12 @@ int main(int argc, char *argv[])
                             QStringLiteral("用记录文件回放驱动界面（走假源链路，同一套数据通路）"),
                             QStringLiteral("CSV路径"));
     parser.addOption(play);
+    QCommandLineOption dbPath(QStringLiteral("db"),
+                              QStringLiteral("会话库(SQLite)路径；默认放在 QStandardPaths 的 "
+                                             "AppDataLocation。★ 打包/便携用法：指到 U 盘或记录目录，"
+                                             "所有会话与参数快照跟着数据一起走"),
+                              QStringLiteral("db路径"));
+    parser.addOption(dbPath);
     // 真机只读探测（不需要界面，用来在联调第一现场把"链路/命令覆盖/状态"一次打全）
     QCommandLineOption probe(QStringLiteral("probe"),
                              QStringLiteral("真机只读探测：打开指定串口，打印链路统计、各命令字"
@@ -628,9 +634,12 @@ int main(int argc, char *argv[])
     data::CsvRecorder recorder;
     data::SessionStore store;
 
-    // 会话库放在标准路径下（不写死绝对路径：打包换机后仍然可用，计划 §2.2 的打包坑）
+    // 会话库放在标准路径下（不写死绝对路径：打包换机后仍然可用，计划 §2.2 的打包坑）；
+    // 也可用 --db 指到别处（便携/把记录放 U 盘时用）
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (!store.open(appData + QStringLiteral("/sessions.db"))) {
+    const QString dbFile = parser.isSet(dbPath) ? parser.value(dbPath)
+                                                : appData + QStringLiteral("/sessions.db");
+    if (!store.open(dbFile)) {
         // SQLite 不可用不影响主流程（逐帧 CSV 仍可用）——但要在控制台留痕，别静默降级
         QTextStream(stdout) << QStringLiteral("提示：会话库不可用（%1）—— 逐帧 CSV 不受影响\n")
                                    .arg(store.lastError());

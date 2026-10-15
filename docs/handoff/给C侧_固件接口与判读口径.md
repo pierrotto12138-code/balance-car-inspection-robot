@@ -3,7 +3,7 @@
 > **适用固件**：`firmware/build/MiniBalance.hex`（构建号 `0xAF` = 10 月 15 日）。
 > **协议**：[`communication_protocol.md`](../protocol/communication_protocol.md) v1.2 为准，本文只补充
 > **"上位机该怎么理解与显示"** 的口径，以及 **B 侧今晚踩过的坑对界面的影响**。
-> **背景**：见 [`真机联调问题清单.md`](真机联调问题清单.md) §8。
+> **背景**：见 [`真机联调问题清单.md`](../design_firmware/真机联调问题清单.md) §8。
 
 ---
 
