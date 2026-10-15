@@ -3,7 +3,7 @@
 #include <cstdint>
 
 /// 协议常量定义。
-/// 唯一依据：docs/protocol/communication_protocol.md（v1.0）。
+/// 唯一依据：docs/protocol/communication_protocol.md（现为 **v1.1 冻结版**，另含 v1.2 的 0x15/0x16 增量）。
 /// 任何改动必须同步更新该文档并升级版本号。
 namespace proto {
 
@@ -21,10 +21,12 @@ constexpr int      kRxTimeoutMs = 100; // 单帧接收超时
 // ---- 上行命令字（机器人 -> 监控）----
 namespace up {
 constexpr uint8_t kPose      = 0x10; // 姿态数据  N=12
-constexpr uint8_t kMotion    = 0x11; // 运动状态  N=11
+constexpr uint8_t kMotion    = 0x11; // 运动状态  N=9（★ 不是 11，v1.1 已修正）
 constexpr uint8_t kTask      = 0x12; // 任务状态  N=5
 constexpr uint8_t kEvent     = 0x13; // 事件告警  N=5
 constexpr uint8_t kEnvGas    = 0x14; // 环境与气体 N=16
+constexpr uint8_t kDiag      = 0x15; // 诊断（v1.2 增量）    N=16：电压/页号/堆/OLED 写计数/任务 tick
+constexpr uint8_t kLoop      = 0x16; // 三环实况（v1.2 增量）N=20：调参核心
 constexpr uint8_t kHeartbeat = 0x1F; // 心跳      N=0
 } // namespace up
 
@@ -59,6 +61,10 @@ enum class EventCode : uint8_t {
     CrashOrLowBat = 0x05,
     GasOverLimit  = 0x06,
     WarmupOrFail  = 0x07,
+    // ---- 安全通道（v1.1 单列，决策 57）：0x08/0x0A（停）与 0x09（解除）成对出现 ★ ----
+    LinkLostStop   = 0x08, ///< 通信失联 → 安全停车
+    SafetyReleased = 0x09, ///< 安全停车解除（收到显式使能）
+    EstopReceived  = 0x0A, ///< 收到急停指令 → 安全停车并锁存
 };
 
 // ---- 任务 ID ----

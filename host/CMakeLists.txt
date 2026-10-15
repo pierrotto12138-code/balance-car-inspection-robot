@@ -34,6 +34,20 @@ add_library(hostio STATIC
 target_include_directories(hostio PUBLIC src)
 target_link_libraries(hostio PUBLIC protocol Qt6::Core Qt6::SerialPort)
 
+# ---------------------------------------------------------------- domain 层（P1）
+# 状态聚合与单位换算：**纯逻辑**（只依赖 Qt6::Core，不依赖 Widgets、不依赖链路实现），
+# 所以能脱离界面/硬件单测 —— 这是"数值口径"唯一可信的证据来源。
+add_library(domain STATIC
+    src/domain/units.cpp
+    src/domain/units.h
+    src/domain/frames.cpp
+    src/domain/frames.h
+    src/domain/vehicle_state.cpp
+    src/domain/vehicle_state.h
+)
+target_include_directories(domain PUBLIC src)
+target_link_libraries(domain PUBLIC protocol Qt6::Core)
+
 # ---------------------------------------------------------------- 上位机界面
 add_executable(host
     src/main.cpp
@@ -42,7 +56,7 @@ add_executable(host
     src/ui/p0panel.cpp
     src/ui/p0panel.h
 )
-target_link_libraries(host PRIVATE hostio Qt6::Widgets)
+target_link_libraries(host PRIVATE hostio domain Qt6::Widgets)
 
 # ---------------------------------------------------------------- 测试
 enable_testing()
@@ -56,6 +70,11 @@ if(Qt6Test_FOUND)
     add_executable(test_link tests/test_link.cpp)
     target_link_libraries(test_link PRIVATE hostio Qt6::Test)
     add_test(NAME link COMMAND test_link)
+
+    # P1：domain 层测试（单位换算 / 帧解析 / 状态聚合，**不需要硬件与界面**）
+    add_executable(test_domain tests/test_domain.cpp)
+    target_link_libraries(test_domain PRIVATE domain hostio Qt6::Test)
+    add_test(NAME domain COMMAND test_domain)
 else()
     message(STATUS "Qt6::Test 未找到，跳过单元测试目标")
 endif()

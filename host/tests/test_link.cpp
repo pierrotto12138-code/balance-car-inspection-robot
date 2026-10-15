@@ -225,6 +225,8 @@ private slots:
         expect.insert(proto::up::kTask, 5);       // 0x12
         expect.insert(proto::up::kEvent, 5);      // 0x13
         expect.insert(proto::up::kEnvGas, 16);    // 0x14
+        expect.insert(proto::up::kDiag, 16);      // 0x15（v1.2 增量）
+        expect.insert(proto::up::kLoop, 20);      // 0x16（v1.2 增量）
         expect.insert(proto::up::kHeartbeat, 0);  // 0x1F
 
         QHash<quint8, int> seen;

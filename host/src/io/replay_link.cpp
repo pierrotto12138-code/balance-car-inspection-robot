@@ -2,7 +2,8 @@
 
 #include "codec.h"
 
-#include <QDateTime>`n#include <QElapsedTimer>
+#include <QDateTime>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QRandomGenerator>
 #include <QTextStream>
@@ -23,6 +24,57 @@ quint32 nowMs()
 QByteArray toQ(const std::vector<uint8_t> &v)
 {
     return QByteArray(reinterpret_cast<const char *>(v.data()), static_cast<int>(v.size()));
+}
+
+// ---- 演练时刻表（虚拟时间 ms）----
+// 为什么假源要主动造事件与安全状态：P1/P2/P3 要显示的"报警、锁存、解除"在真实硬件上
+// 需要人去制造（拔线、按急停），离线开发时根本没法复现"锁存前后界面差别"。
+// 这里把它变成**可重复的剧本**：每 60 s 一轮（急停在 40 s、解除在 48 s、低压在 50~56 s）。
+struct ScheduledEvent {
+    quint64 atMs;
+    proto::EventCode code;
+};
+
+constexpr ScheduledEvent kOneShots[] = {
+    {1000, proto::EventCode::SelfCheckDone},
+    {1200, proto::EventCode::WarmupOrFail},
+    {2000, proto::EventCode::TaskStart},
+    {40000, proto::EventCode::EstopReceived},
+    {48000, proto::EventCode::SafetyReleased},
+    {58000, proto::EventCode::TaskDone},
+};
+
+/// 气体冲高窗口：每 30 s 里的前 4 s（与 makeEnvGas 用同一判据，必须一起改）
+constexpr quint64 kSpikePeriodMs = 30000;
+constexpr quint64 kSpikeLenMs = 4000;
+/// 安全锁存窗口与低压窗口（每 60 s 一轮）
+constexpr quint64 kSafetyPeriodMs = 60000;
+constexpr quint64 kEstopAtMs = 40000;
+constexpr quint64 kEstopReleaseMs = 48000;
+constexpr quint64 kLowBatAtMs = 50000;
+constexpr quint64 kLowBatEndMs = 56000;
+
+bool inWindow(quint64 t, quint64 period, quint64 from, quint64 to)
+{
+    const quint64 p = t % period;
+    return p >= from && p < to;
+}
+
+bool inSpike(quint64 t)
+{
+    // 前 30 s（第 0 个窗口）**不冲高**：否则假源一开机就"气体超限"，
+    // 既不符合真实起步过程，也会让人误以为界面在乱报。
+    return t >= kSpikePeriodMs && inWindow(t, kSpikePeriodMs, 0, kSpikeLenMs);
+}
+
+bool inEstopLatch(quint64 t)
+{
+    return inWindow(t, kSafetyPeriodMs, kEstopAtMs, kEstopReleaseMs);
+}
+
+bool inLowBattery(quint64 t)
+{
+    return inWindow(t, kSafetyPeriodMs, kLowBatAtMs, kLowBatEndMs);
 }
 
 } // namespace
@@ -54,6 +106,11 @@ void ReplayLink::open()
     m_captureIdx = 0;
     m_virtualMs = 0;
     m_lastPose = m_lastMotion = m_lastTask = m_lastEnv = m_lastHb = 0;
+    m_lastDiag = m_lastLoop = 0;
+    for (int i = 0; i < kOneShotCount; ++i) {
+        m_eventFired[i] = false;
+    }
+    m_lastSpikeIdx = -1;
     m_decoder.reset();
     m_clock.start();
     // 节拍只决定"多久检查一次"，**不决定速率**：速率由实测经过时间 × 倍数算出来。
@@ -160,13 +217,24 @@ QByteArray ReplayLink::makeMotion(quint32 tMs)
 
 QByteArray ReplayLink::makeTask(quint32 tMs)
 {
+    const quint64 t = tMs;
     std::vector<uint8_t> d;
-    const int phase = (tMs / 5000) % 8;
+    int phase = static_cast<int>((t / 5000) % 8);
+    uint8_t fault = 0x00;
+    // 与气体冲高、急停锁存**保持一致**：状态帧与事件帧互相矛盾的话，
+    // 界面上就会出现"事件说锁存、状态说正常"，看的人第一反应是"上位机坏了"。
+    if (inSpike(t)) {
+        fault |= 0x01; // bit0 气体
+        phase = static_cast<int>(proto::Phase::Analysis);
+    }
+    if (inEstopLatch(t)) {
+        phase = static_cast<int>(proto::Phase::Fault);
+    }
     d.push_back(static_cast<uint8_t>(proto::TaskId::Patrol));
     d.push_back(static_cast<uint8_t>(phase));
-    d.push_back(static_cast<uint8_t>((tMs / 100) % 101)); // 完成度 %
-    d.push_back(static_cast<uint8_t>((tMs / 8000) % 5));  // 巡检点
-    d.push_back(0x00);                                    // 异常标志
+    d.push_back(static_cast<uint8_t>((t / 100) % 101)); // 完成度 %
+    d.push_back(static_cast<uint8_t>((t / 8000) % 5));  // 巡检点
+    d.push_back(fault);                                 // 异常标志
     return toQ(proto::encodeFrame(proto::up::kTask, d));
 }
 
@@ -176,7 +244,7 @@ QByteArray ReplayLink::makeEnvGas(quint32 tMs)
     proto::putU16(d, 1234);
     proto::putU16(d, 2345);
     // 每 30 s 来一次"气体冲高"，方便看报警与曲线
-    const bool spike = (tMs % 30000) < 4000;
+    const bool spike = inSpike(tMs);
     const double mq2 = spike ? 420.0 : 45.0 + 10.0 * std::sin(tMs / 3000.0);
     const double mq135 = spike ? 610.0 : 62.0 + 12.0 * std::cos(tMs / 2500.0);
     proto::putU16(d, static_cast<uint16_t>(mq2 * 10));
@@ -193,6 +261,81 @@ QByteArray ReplayLink::makeEnvGas(quint32 tMs)
     d.push_back(0x00);
     d.push_back(0x00);
     return toQ(proto::encodeFrame(proto::up::kEnvGas, d));
+}
+
+QByteArray ReplayLink::makeEvent(proto::EventCode code, quint32 stampMs)
+{
+    std::vector<uint8_t> d;
+    d.push_back(static_cast<uint8_t>(code));
+    proto::putU32(d, stampMs); // 机器人侧时间戳（这里用虚拟时间，与产帧时刻自洽）
+    return toQ(proto::encodeFrame(proto::up::kEvent, d));
+}
+
+QByteArray ReplayLink::makeDiag(quint32 tMs)
+{
+    const quint64 t = tMs;
+    std::vector<uint8_t> d;
+    double v = 11.85 + 0.15 * std::sin(static_cast<double>(t) / 7000.0); // 常态 11.7~12.0 V
+    if (inLowBattery(t)) {
+        v = 10.95 - 0.10 * std::sin(static_cast<double>(t) / 2000.0); // 掉到报警线 11.10 以下
+    }
+    proto::putU16(d, static_cast<uint16_t>(v * 100)); // 0 电池电压 0.01 V（★ 只有这一帧带电压）
+    d.push_back(0x02);                                // 2 当前显示页 = 巡检通信页
+    d.push_back(0x00);                                // 3 Flag_Show（0 = 屏幕归我们）
+    d.push_back(0x01);                                // 4 姿态算法 = 四元数
+
+    uint8_t bits = 0x04; // bit2 DHT11 有效
+    if (inSpike(t)) {
+        bits |= 0x01; // bit0 报警中
+    }
+    if (inEstopLatch(t)) {
+        bits |= 0x02; // bit1 已安全锁存（与 0x0A/0x09 事件一致）
+    }
+    if (kind() == LinkKind::Bluetooth && m_stats.bytesRx > 0) {
+        bits |= 0x08; // bit3 本链路收过数据（有线链路不该置这一位）
+    }
+    d.push_back(bits); // 5 状态位
+
+    proto::putU16(d, static_cast<uint16_t>(18 - (t / 1000) % 3)); // 6 剩余堆 KB
+    // 8 OLED 累计写入字节：约 1.05 kB/s 稳定增长（"不涨 = 屏幕没在刷"）
+    proto::putU32(d, static_cast<uint32_t>(t * 105 / 100));
+    const uint8_t tick = static_cast<uint8_t>((t / 1000) & 0xFF);
+    d.push_back(tick);                                     // 12 通信
+    d.push_back(tick);                                     // 13 气体
+    d.push_back(static_cast<uint8_t>(tick - 1));           // 14 状态
+    d.push_back(static_cast<uint8_t>(tick - 2));           // 15 界面
+    return toQ(proto::encodeFrame(proto::up::kDiag, d));
+}
+
+QByteArray ReplayLink::makeLoop(quint32 tMs)
+{
+    const double t = static_cast<double>(tMs);
+    std::vector<uint8_t> d;
+    const int bal = static_cast<int>(std::sin(t / 800.0) * 300.0);
+    const int vel = static_cast<int>(std::sin(t / 2500.0) * 120.0);
+    const int turn = static_cast<int>(std::sin(t / 1500.0) * 40.0);
+    const int moto1 = bal + vel + turn;
+    const int moto2 = bal + vel - turn;
+    const int a1 = moto1 < 0 ? -moto1 : moto1;
+    const int a2 = moto2 < 0 ? -moto2 : moto2;
+    proto::putI16(d, static_cast<int16_t>(bal));
+    proto::putI16(d, static_cast<int16_t>(vel));
+    proto::putI16(d, static_cast<int16_t>(turn));
+    proto::putI16(d, static_cast<int16_t>(moto1));
+    proto::putI16(d, static_cast<int16_t>(moto2));
+    // "算了没执行"（Moto 非零而 CCR=0）在假源里**不该出现**，否则离线看到的
+    // 就是假故障。这里 CCR 就是 |Moto|（钳到 7200 内）。
+    proto::putU16(d, static_cast<uint16_t>(a1 > 7200 ? 7200 : a1));
+    proto::putU16(d, static_cast<uint16_t>(a2 > 7200 ? 7200 : a2));
+    proto::putI16(d, static_cast<int16_t>(std::sin(t / 900.0) * 120.0)); // 编码器原始计数
+    proto::putI16(d, static_cast<int16_t>(std::sin(t / 950.0) * 120.0));
+    uint8_t bits = 0x04; // bit2：本拍真的调用了 Set_Pwm
+    if (inEstopLatch(static_cast<quint64>(tMs))) {
+        bits |= 0x01 | 0x02; // Flag_Stop | App_MotorDisable
+    }
+    d.push_back(bits);
+    d.push_back(0xAF); // 固件版本字节 (月<<4)|日 = 10 月 15 日（协议 §3.7）
+    return toQ(proto::encodeFrame(proto::up::kLoop, d));
 }
 
 void ReplayLink::emitRawFrame(const QByteArray &bytes)
@@ -267,12 +410,33 @@ void ReplayLink::onTick()
     for (int i = dueCount(m_lastEnv, 1000); i > 0; --i) { // 0x14 环境 1 Hz
         emitRawFrame(makeEnvGas(vms));
     }
+    for (int i = dueCount(m_lastDiag, 1000); i > 0; --i) { // 0x15 诊断 1 Hz
+        emitRawFrame(makeDiag(vms));
+    }
+    for (int i = dueCount(m_lastLoop, 1000); i > 0; --i) { // 0x16 三环实况 1 Hz
+        emitRawFrame(makeLoop(vms));
+    }
     for (int i = dueCount(m_lastHb, 200); i > 0; --i) { // 0x1F 心跳 5 Hz
         emitRawFrame(toQ(proto::encodeFrame(proto::up::kHeartbeat, {})));
     }
+
+    // ---- 事件演练（0x13）：一次性剧本 + 气体冲高沿 ----
+    for (int i = 0; i < kOneShotCount; ++i) {
+        if (!m_eventFired[i] && m_virtualMs >= kOneShots[i].atMs) {
+            m_eventFired[i] = true;
+            emitRawFrame(makeEvent(kOneShots[i].code, static_cast<quint32>(kOneShots[i].atMs)));
+        }
+    }
+    const qint64 spikeIdx = static_cast<qint64>(m_virtualMs / kSpikePeriodMs);
+    if (inSpike(m_virtualMs) && spikeIdx != m_lastSpikeIdx) {
+        m_lastSpikeIdx = spikeIdx; // 只在"进入冲高窗口"的那一沿报一次（重复帧不重复上报）
+        emitRawFrame(makeEvent(proto::EventCode::GasOverLimit, vms));
+    }
+
     emitStats();
 }
 
 } // namespace io
-
-#include "replay_link.moc"
+// 注意：Q_OBJECT 声明在 replay_link.h（已列进 CMake 目标），moc 由 AUTOMOC 统一生成。
+// 这里**不要**再 `#include "replay_link.moc"` —— 否则 AutoMoc 会报
+// "includes the moc file ... but does not contain Q_OBJECT"（噪音告警会掩盖真问题）。

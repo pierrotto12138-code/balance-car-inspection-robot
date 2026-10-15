@@ -313,4 +313,7 @@ void SerialLink::stopReader()
 
 } // namespace io
 
+// ★ 这个 .moc 必须保留：SerialLink::Reader 是**定义在本 .cpp 里**的 QObject 子类
+//   （故意不放进头文件，避免把 QSerialPort 暴露出去），AutoMoc 因此需要本文件自己包含 moc。
+//   删掉它会直接编译失败（AutoMoc error: contains Q_OBJECT but does not include *.moc）。
 #include "serial_link.moc"

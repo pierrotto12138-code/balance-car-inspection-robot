@@ -10,9 +10,16 @@
 //       （见 docs/design_host/C部分方案与计划.md §八 风险对策）。
 //
 //  两种数据来源：
-//    · 合成（默认）：按协议真实周期造 0x10/0x11/0x12/0x14/0x1F 帧，数值是可信的假数据，
-//      并且会**故意掺入**可配置比例的坏帧，用来验证"丢帧计数"确实在工作。
+//    · 合成（默认）：按协议真实周期造 0x10/0x11/0x12/0x13/0x14/0x15/0x16/0x1F 帧，
+//      数值是可信的假数据（气体每 30 s 冲高一次、每 60 s 演一次"急停→解除"、
+//      电压会掉到报警线以下），并且会**故意掺入**可配置比例的坏帧，
+//      用来验证"丢帧计数"确实在工作。
 //    · 文件：逐行十六进制（`AA 55 ...` 或 `AA55...`），可用 `tune.py --observe` 录真实数据。
+//
+//  ★ 假源必须覆盖**界面要用到的每一种帧**：只要有一种帧假源不发，那一块界面
+//    在离线开发时就是"永远空白"，而人很容易把它当成"界面写错了"去瞎改
+//    （P0 的 0x14 少发两个保留字节就是这么被发现的）。加帧时请同步更新
+//    tests/test_link.cpp 的 `syntheticFramesMatchProtocolLengths` 长度表。
 //
 //  ★ 它继承同一个 LinkBase，所以上层（LinkManager / 界面）**完全不用区分真假**。
 // ============================================================================
@@ -63,6 +70,9 @@ private:
     QByteArray makeMotion(quint32 tMs);
     QByteArray makeTask(quint32 tMs);
     QByteArray makeEnvGas(quint32 tMs);
+    QByteArray makeEvent(proto::EventCode code, quint32 stampMs);
+    QByteArray makeDiag(quint32 tMs);
+    QByteArray makeLoop(quint32 tMs);
 
     /// 定时器基准节拍（毫秒）；虚拟时间按 kBaseTickMs × 倍数 推进
     static constexpr int kBaseTickMs = 5;
@@ -85,7 +95,14 @@ private:
     quint64 m_lastMotion = 0;
     quint64 m_lastTask = 0;
     quint64 m_lastEnv = 0;
+    quint64 m_lastDiag = 0;
+    quint64 m_lastLoop = 0;
     quint64 m_lastHb = 0;
+
+    // ---- 演练用：一次性事件是否已发 + 气体冲高的窗口序号 ----
+    static constexpr int kOneShotCount = 6;
+    bool m_eventFired[kOneShotCount] = {false, false, false, false, false, false};
+    qint64 m_lastSpikeIdx = -1;
 
     proto::FrameDecoder m_decoder; ///< 假源也要真的解帧（与真串口同一套代码路径）
 };
