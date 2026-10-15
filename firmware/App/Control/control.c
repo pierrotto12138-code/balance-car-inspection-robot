@@ -1,4 +1,12 @@
 #include "control.h"
+/* ★★ 2026-10-13 真机联调血泪教训：**条件编译的宏必须在本文件可见**。
+   本文件用了 CFG_ENCODER_LEFT/RIGHT_INVERT、CFG_MOTOR_LEFT/RIGHT_INVERT 等宏，
+   但原先没有包含 app_config.h ⇒ 这些宏在预处理时被当成"未定义 = 0"
+   ⇒ 所有 `#if CFG_xxx` 块**整段被跳过**，开关写多少都无效，而运行现象上完全看不出来
+   （连续三轮"翻电机方向"实验一次都没生效，白烧固件、白折腾一晚）。
+   规则：凡在 .c 里用 `#if CFG_*`，该 .c 必须能看到定义它的头文件；
+         改完开关必须用"编译产物是否不同"来验证，不能靠运行现象反推。*/
+#include "app_config.h"
 #include "filter.h"
 #include "MPU6050.h"
 #include "inv_mpu.h"
