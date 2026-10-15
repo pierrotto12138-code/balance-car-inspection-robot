@@ -387,6 +387,20 @@ def cmd_observe(link, seconds, csv_path, quiet=False):
               f"（≈{zc/dur:.1f} Hz 振荡频率，越大越可能在抖）")
 
 
+def looks_like_hex_text(text):
+    """判断文本是不是"十六进制帧的文本形式"。
+
+    ★ 这里踩过一次坑：原先用 `[0-9a-fA-F]{6,}` 判连续 6 个 hex 字符，
+      但本项目（test_vectors.tsv、GUI 的记录、手工写的捕获）**普遍是空格分隔**写法
+      （`AA 55 14 10 ...`），连续 hex 最多 2 个 → 被判成二进制 → **解析出 0 帧**。
+      正确判据：去掉注释与所有空白后，整份文本**只由 hex 字符组成**且长度为偶数。
+    """
+    body = "\n".join(line.split("#")[0] for line in text.splitlines())
+    stripped = re.sub(r"\s", "", body)
+    return (len(stripped) >= 4 and len(stripped) % 2 == 0
+            and re.fullmatch(r"[0-9a-fA-F]+", stripped) is not None)
+
+
 def replay(path, csv_path=None, limit=None):
     """离线回放：文件里可以是每行一个 hex 帧、或每行一段原始字节 hex、或原始二进制。"""
     raw = open(path, "rb").read()
@@ -398,7 +412,7 @@ def replay(path, csv_path=None, limit=None):
 
     p = Parser()
     frames = []
-    if text is not None and re.search(r"[0-9a-fA-F]{6,}", text):
+    if text is not None and looks_like_hex_text(text):
         for line in text.splitlines():
             line = line.split("#")[0].strip().replace(" ", "")
             if not line:
@@ -442,8 +456,18 @@ def monitor(link, seconds):
                 elif k == "motion":
                     last["motion"] = d
                 elif k == "env":
-                    print(f"  ENV  MQ2 {d['mq2PpmX10']/10:6.1f}ppm  MQ135 {d['mq135PpmX10']/10:6.1f}ppm"
-                          f"  T {d['tempX10']/10:5.1f}C  H {d['humiX10']/10:5.1f}%  {d['gearName']}")
+                    # ★ 必须解释"就绪位"（0x14 偏移 12）：固件在**读不到**时发的是 0，
+                    #   若直接打印就成了 "T 0.0C H 0.0%" —— 看起来像"0 度"，实际是"没读到"。
+                    #   DHT11 与两路 MQ 都靠它区分"真实值"与"未标定/未就绪"。
+                    rdy = d["ready"]
+                    dht = (f"T {d['tempX10'] / 10:5.1f}C  H {d['humiX10'] / 10:5.1f}%"
+                           if (rdy & 0x04) else "T/H N/A（DHT11 未就绪）")
+                    mq2 = (f"{d['mq2PpmX10'] / 10:6.1f}ppm" if (rdy & 0x01) else "未标定")
+                    mq135 = (f"{d['mq135PpmX10'] / 10:6.1f}ppm" if (rdy & 0x02) else "未标定")
+                    comp = "补偿开" if (rdy & 0x08) else "补偿关"
+                    print(f"  ENV  MQ2 {mq2} (raw {d['mq2Raw']:4d})   "
+                          f"MQ135 {mq135} (raw {d['mq135Raw']:4d})")
+                    print(f"       {dht}   {d['gearName']}   {comp}   就绪位=0x{rdy:02X}")
                 elif k == "task":
                     print(f"  TASK stage={d['phaseName']} task={d['task']} prog={d['progress']}% "
                           f"wp={d['waypoint']} fault=0x{d['fault']:02X}")

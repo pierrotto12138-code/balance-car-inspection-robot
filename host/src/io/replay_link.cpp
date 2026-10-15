@@ -183,9 +183,15 @@ QByteArray ReplayLink::makeEnvGas(quint32 tMs)
     proto::putU16(d, static_cast<uint16_t>(mq135 * 10));
     proto::putI16(d, 256);   // 25.6 ℃
     proto::putU16(d, 610);   // 61.0 %RH
-    d.push_back(0x0F);       // 就绪位
+    d.push_back(0x0F);       // 就绪位：bit0 MQ-2 | bit1 MQ-135 | bit2 DHT11 | bit3 补偿
     d.push_back(spike ? static_cast<uint8_t>(proto::SampleGear::Fast)
                       : static_cast<uint8_t>(proto::SampleGear::Normal));
+    // ★ 0x14 的数据段是 **16** 字节（协议 §3.1）：偏移 14/15 是保留字节，固件里写 0。
+    //   这里原先漏了它们（只发 14 字节）→ 任何按"长度 ≥16"判断的实现（我们自己的
+    //   Parser、以及 P1 要写的 0x14 解析）都会把它当**未知命令**，现象是
+    //   "假源在跑、但环境数据一直是空的"，极难查。测试里已加长度断言防复发。
+    d.push_back(0x00);
+    d.push_back(0x00);
     return toQ(proto::encodeFrame(proto::up::kEnvGas, d));
 }
 

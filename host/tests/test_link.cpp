@@ -208,6 +208,49 @@ private slots:
         qInfo("压测：1 s 内 %llu 帧，0 丢帧",
               static_cast<unsigned long long>(s.framesOk));
     }
+
+    // ---------------------------------------------------------------- ⑦ 假源必须符合协议帧长
+    //  ★ 防的是"假源自己不合规，把上层解析全带偏"：曾经 0x14 只发 14 字节
+    //    （协议要求 16，偏移 14/15 为保留字节），于是任何按长度判断的解析都认不出它，
+    //    现象是"假源在跑、环境数据却一直空的"。
+    void syntheticFramesMatchProtocolLengths()
+    {
+        LinkManager mgr;
+        mgr.setMode(LinkKind::Wire, LinkManager::Mode::Replay);
+
+        // 协议 §3 规定的数据段长度
+        QHash<quint8, int> expect;
+        expect.insert(proto::up::kPose, 12);      // 0x10
+        expect.insert(proto::up::kMotion, 9);     // 0x11 —— 是 9 不是 11（v1.1 已修正）
+        expect.insert(proto::up::kTask, 5);       // 0x12
+        expect.insert(proto::up::kEvent, 5);      // 0x13
+        expect.insert(proto::up::kEnvGas, 16);    // 0x14
+        expect.insert(proto::up::kHeartbeat, 0);  // 0x1F
+
+        QHash<quint8, int> seen;
+        connect(&mgr, &LinkManager::frameReady, this,
+                [&seen](LinkKind, quint8 cmd, const QByteArray &d) {
+                    if (!seen.contains(cmd)) {
+                        seen.insert(cmd, d.size());
+                    }
+                });
+
+        // 0x14 是 1 Hz，跑 2.2 s 才覆盖得到
+        mgr.open(LinkKind::Wire);
+        QTest::qWait(2200);
+        mgr.close(LinkKind::Wire);
+
+        QVERIFY2(seen.contains(proto::up::kPose), "应出现 0x10 姿态帧");
+        QVERIFY2(seen.contains(proto::up::kMotion), "应出现 0x11 运动帧");
+        QVERIFY2(seen.contains(proto::up::kTask), "应出现 0x12 任务帧");
+        QVERIFY2(seen.contains(proto::up::kEnvGas), "应出现 0x14 环境帧");
+        for (auto it = seen.constBegin(); it != seen.constEnd(); ++it) {
+            const int want = expect.value(it.key(), -1);
+            QVERIFY2(want >= 0, qPrintable(QStringLiteral("假源发了协议外的命令 0x%1")
+                                               .arg(it.key(), 2, 16, QLatin1Char('0'))));
+            QCOMPARE(it.value(), want);
+        }
+    }
 };
 
 QTEST_MAIN(TestLink)
