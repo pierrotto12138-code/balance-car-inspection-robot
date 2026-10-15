@@ -121,16 +121,22 @@ int EXTI15_10_IRQHandler(void)
 			if(Put_Down(Angle_Balance,Encoder_Left,Encoder_Right))              //===检查是否小车被放下
 			Flag_Stop=0;	                                                      //===如果被放下就启动电机
 #endif
-      if(Turn_Off(Angle_Balance,Voltage)==0)                              //===如果不存在异常
-				/* ★ 2026-10-13：分侧翻向（见 app_config.h 的方向开关说明）。
-			   实测两轮在前后倾时"原地对拧" ⇒ 左右两侧不一致，须**分侧**处置。*/
+      if(Turn_Off(Angle_Balance,Voltage)==0)
+			{
+				/* ★★ 2026-10-15 紧急修正（我引入的严重缺陷）：这里**必须有花括号**。
+				   原先 if 没带花括号，而下面跟着两个 #if 块与 Set_Pwm ⇒ 预处理器展开后
+				   只有第一句受 if 保护，`Moto2=-Moto2` 与 `Set_Pwm(...)` **变成无条件执行**：
+				     · 停车/保护态下 Moto1 不翻、Moto2 翻 ⇒ 两轮拿到相反命令 ⇒ **原地转圈**；
+				     · Set_Pwm 被无条件调用 ⇒ **Turn_Off() 的停车保护被绕过**（铁律 29 的旁路）。
+				   教训：往"裸 if"后面插语句（尤其带 #if 的）之前，先给它补上花括号。*/
 #if CFG_MOTOR_LEFT_INVERT
 				Moto1 = -Moto1;
 #endif
 #if CFG_MOTOR_RIGHT_INVERT
 				Moto2 = -Moto2;
 #endif
-				Set_Pwm(Moto1,Moto2);                                               //===赋值给PWM寄存器
+				Set_Pwm(Moto1,Moto2);
+			}                                               //===赋值给PWM寄存器
 			if(Bi_zhang==0)Led_Flash(100);                                      //===LED闪烁;常规模式 1s改变一次指示灯的状态
 			else           Led_Flash(0);                                        //===LED闪烁;超声波模式 指示灯常亮
 			Key();                                                              //===扫描按键状态 单击双击可以改变小车运行状态

@@ -110,7 +110,8 @@ void CurvePanel::buildUi()
     grid->setSpacing(8);
 
     auto makeCell = [this](ScopePlot *&plot, ValueCard *&card, const QString &title,
-                           const QString &unit, const char *color, int decimals) {
+                           const QString &unit, const char *color, int decimals,
+                           const QString &objName) {
         auto *box = new QGroupBox(title, this);
         auto *vl = new QVBoxLayout(box);
         vl->setContentsMargins(6, 6, 6, 6);
@@ -119,6 +120,7 @@ void CurvePanel::buildUi()
         card->setValuePointSize(15);
         vl->addWidget(card);
         plot = new ScopePlot(QString(), box);
+        plot->setObjectName(objName); // 供界面冒烟测试定位（不必为测试加专用接口）
         plot->setUnitLabel(unit);
         plot->addChannel(title, QColor(color));
         vl->addWidget(plot, 1);
@@ -126,13 +128,13 @@ void CurvePanel::buildUi()
     };
 
     grid->addWidget(makeCell(m_mq2Plot, m_mq2Card, QStringLiteral("MQ-2 浓度"),
-                             QStringLiteral("ppm"), kGas2Color, 1),
+                             QStringLiteral("ppm"), kGas2Color, 1, QStringLiteral("mq2Plot")),
                     0, 0);
     grid->addWidget(makeCell(m_mq135Plot, m_mq135Card, QStringLiteral("MQ-135 浓度"),
-                             QStringLiteral("ppm"), kGas135Color, 1),
+                             QStringLiteral("ppm"), kGas135Color, 1, QStringLiteral("mq135Plot")),
                     0, 1);
     grid->addWidget(makeCell(m_voltPlot, m_voltCard, QStringLiteral("电池电压"),
-                             QStringLiteral("V"), kVoltColor, 2),
+                             QStringLiteral("V"), kVoltColor, 2, QStringLiteral("voltPlot")),
                     1, 0);
 
     // 温湿度：一张图两条通道（这两个量本来就该一起看）
@@ -152,6 +154,7 @@ void CurvePanel::buildUi()
         cards->addWidget(humCard);
         vl->addLayout(cards);
         m_thPlot = new ScopePlot(QString(), box);
+        m_thPlot->setObjectName(QStringLiteral("thPlot"));
         m_thPlot->setUnitLabel(QStringLiteral("℃ / %RH"));
         m_thPlot->addChannel(QStringLiteral("温度"), QColor(kTempColor));
         m_thPlot->addChannel(QStringLiteral("湿度"), QColor(kHumColor));

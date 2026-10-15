@@ -291,6 +291,15 @@ void ScopePlot::setWindowSeconds(double sec)
     applyDefaultRanges();
 }
 
+int ScopePlot::sampleCount() const
+{
+    int n = 0;
+    for (const Channel &c : m_channels) {
+        n += c.t.size();
+    }
+    return n;
+}
+
 void ScopePlot::setEndValueVisible(bool on)
 {
     m_endLabels = on;

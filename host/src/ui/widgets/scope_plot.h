@@ -72,6 +72,10 @@ public:
     QString cursorReadout() const { return m_readout; }
     /// 最近一个采样点在横轴上的位置（秒）；没有数据返回 -1
     double lastTime() const { return m_lastT; }
+    /// 已采样点数（所有通道合计）——测试与"数据到没到"的诊断用
+    int sampleCount() const;
+    int markerCount() const { return m_markers.size(); }
+    int channelCount() const { return m_channels.size(); }
 
 public slots:
     /// 重绘（由面板定时器调用；暂停时不重绘）
