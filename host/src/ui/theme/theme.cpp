@@ -1,5 +1,7 @@
 #include "ui/theme/theme.h"
 
+#include <QStringList>
+
 namespace theme {
 
 QString styleSheet()
@@ -123,8 +125,13 @@ QFont monoFont(int pointSize, bool bold)
 {
     QFont f(QStringLiteral("Consolas"));
     f.setStyleHint(QFont::Monospace);
-    f.setFamilies(QStringList{QStringLiteral("Consolas"), QStringLiteral("Cascadia Mono"),
-                              QStringLiteral("JetBrains Mono"), QStringLiteral("Courier New")});
+    // 注意：这里用 << 逐个追加，而不是 `QStringList{a, b, c}` ——
+    // QStringLiteral 的宏展开里带有顶层逗号，放进**花括号初始化列表**会被当成多个元素
+    // （报"too many initializers for QStringList"，很容易误判成 Qt 的 bug）。
+    QStringList families;
+    families << QStringLiteral("Consolas") << QStringLiteral("Cascadia Mono")
+             << QStringLiteral("JetBrains Mono") << QStringLiteral("Courier New");
+    f.setFamilies(families);
     f.setPointSize(pointSize);
     f.setBold(bold);
     return f;

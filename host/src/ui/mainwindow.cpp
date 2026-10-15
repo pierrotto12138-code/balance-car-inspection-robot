@@ -95,6 +95,13 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, QWidge
             });
 }
 
+void MainWindow::showPage(int index)
+{
+    if (index >= 0 && index < m_nav->count()) {
+        m_nav->setCurrentRow(index);
+    }
+}
+
 void MainWindow::buildMenus()
 {
     auto *viewMenu = menuBar()->addMenu(QStringLiteral("视图(&V)"));

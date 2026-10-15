@@ -284,7 +284,10 @@ void SerialLink::startReader()
                 emitStats();
             });
     connect(m_thread, &QThread::started, m_reader, &Reader::run);
-    connect(m_reader, &Reader::finished, m_thread, &QThread::quit);
+    // Reader::run() 自己就是循环体：m_stop 置位后它会 return，线程随之结束。
+    // 这里的 quit 用 **DirectConnection**（见 stopReader 的注释：跨线程排队到主线程
+    // 会失效）；即使不连这条也不会出错，留着是为了"万一将来 run() 改成 exec() 循环"。
+    connect(m_reader, &Reader::finished, m_thread, &QThread::quit, Qt::DirectConnection);
 
     setState(LinkState::Opening, QStringLiteral("启动读取线程…"));
     m_thread->start();
@@ -296,10 +299,20 @@ void SerialLink::stopReader()
         return;
     }
     if (m_reader != nullptr) {
-        m_reader->requestStop();
+        m_reader->requestStop(); // 原子标志：读循环在 ≤10 ms 内退出
     }
-    if (!m_thread->wait(3000)) {
-        // 极端情况（驱动卡死）：不强杀线程，仅放弃引用，避免崩溃
+    // ★ 直接调 quit()：QThread::quit() 是线程安全的，可以跨线程调用。
+    //   这里**不能**只依赖 `Reader::finished → QThread::quit` 那条信号连接 ——
+    //   它是 AutoConnection：Reader 在工作线程、QThread 对象的归属线程是主线程，
+    //   于是 quit 会被**排队**到主线程的事件循环里执行。如果调用 close() 时主线程
+    //   并不在跑事件循环（命令行工具、程序退出路径就是这种情形），这条排队信号
+    //   永远不被投递 → wait(3000) 必然超时 → **关一次串口界面冻 3 秒**，
+    //   而且 thread/reader 引用被放弃（泄漏）。
+    //   这个坑是 2026-10-15 用 `--probe` 打真机时，从"状态年龄总是 ~3000 ms"反推出来的。
+    m_thread->quit();
+    if (!m_thread->wait(2000)) {
+        // 极端情况（驱动卡死）：不强杀线程，仅放弃引用，避免崩溃 —— 但要让它在日志里可见
+        qWarning("SerialLink: 读取线程 2 s 内未退出（驱动可能卡死），放弃引用；串口资源可能未释放");
         m_thread->setParent(nullptr);
         m_thread = nullptr;
         m_reader = nullptr;

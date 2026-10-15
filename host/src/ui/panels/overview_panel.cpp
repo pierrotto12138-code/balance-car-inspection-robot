@@ -534,16 +534,21 @@ void OverviewPanel::refresh()
                                        "0x10/0x11/0x12/0x14/0x15/0x16 = %3/%4/%5/%6/%7/%8")
                             .arg(st.malformedFrames())
                             .arg(st.unknownFrames())
-                            .arg(st.received(proto::up::kPose) ? QStringLiteral("✔") : QStringLiteral("✘"),
-                                 st.received(proto::up::kMotion) ? QStringLiteral("✔") : QStringLiteral("✘"),
-                                 st.received(proto::up::kTask) ? QStringLiteral("✔") : QStringLiteral("✘"),
-                                 st.received(proto::up::kEnvGas) ? QStringLiteral("✔") : QStringLiteral("✘"),
-                                 st.received(proto::up::kDiag) ? QStringLiteral("✔") : QStringLiteral("✘"),
-                                 st.received(proto::up::kLoop) ? QStringLiteral("✔") : QStringLiteral("✘")));
+                            .arg(st.received(proto::up::kPose) ? QStringLiteral("有") : QStringLiteral("无"),
+                                 st.received(proto::up::kMotion) ? QStringLiteral("有") : QStringLiteral("无"),
+                                 st.received(proto::up::kTask) ? QStringLiteral("有") : QStringLiteral("无"),
+                                 st.received(proto::up::kEnvGas) ? QStringLiteral("有") : QStringLiteral("无"),
+                                 st.received(proto::up::kDiag) ? QStringLiteral("有") : QStringLiteral("无"),
+                                 st.received(proto::up::kLoop) ? QStringLiteral("有") : QStringLiteral("无")));
     m_sources->setText(QStringLiteral("数据来源：姿态 %1 ｜ 运动 %2 ｜ 任务 %3 ｜ 环境 %4 ｜ 诊断 %5")
                            .arg(sourceText(proto::up::kPose), sourceText(proto::up::kMotion),
                                 sourceText(proto::up::kTask), sourceText(proto::up::kEnvGas),
                                 sourceText(proto::up::kDiag)));
+    // 两条链路都会发周期帧（协议 §七 约定 6），这里显示的是**最后一次有效值**的来源；
+    // 把这句话放进 tooltip，避免"为什么全是蓝牙"这种疑问没法当场回答。
+    m_sources->setToolTip(QStringLiteral("两条链路都会周期性上报同样的帧（协议 §七 约定 6）。\n"
+                                         "这里显示的是最后一次**有效值**来自哪条链路、距今多久；\n"
+                                         "下面链路表的\"解帧/最近帧\"才是各链路自己的统计。"));
 
     // ---- ⑧ 状态位 ----
     const auto &d = st.diag();

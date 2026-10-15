@@ -7,6 +7,13 @@
    规则：凡在 .c 里用 `#if CFG_*`，该 .c 必须能看到定义它的头文件；
          改完开关必须用"编译产物是否不同"来验证，不能靠运行现象反推。*/
 #include "app_config.h"
+
+/* ★ 2026-10-13：本拍是否真的执行了 Set_Pwm（供 0x16 上报，铁律 29 的断言位）。
+   ★★ 必须放在**无条件**位置：最初它被放进了 `#ifdef USE_FREERTOS` 块里，
+   于是 `make USE_RTOS=0`（裸机对照版）只剩引用没有定义 ⇒ 直接编不过 ——
+   而"先烧裸机版对照"是本项目排查时序问题的标准退路（上板自检清单 §3.3），
+   退路被自己弄断过一次。规则：**被两种构建共用的全局量，定义点不能放在条件块里**。*/
+volatile u8 g_pwmApplied = 0;
 #include "filter.h"
 #include "MPU6050.h"
 #include "inv_mpu.h"
@@ -29,8 +36,6 @@ int Voltage_Temp,Voltage_Count,Voltage_All;
    为什么放在中断里做：中断每 5/10 ms 都会跑，是唯一能保证"锁存一置位、电机立刻停"的地方；
    而任务侧写一个 volatile u8 是原子的，不需要任何锁。 */
 extern volatile u8 App_MotorDisable;
-/* ★ 2026-10-13：本拍是否真的执行了 Set_Pwm（供 0x16 上报，铁律 29 的断言位）*/
-volatile u8 g_pwmApplied = 0;
 #include "odom.h"           /* 里程累计（纯加法，中断安全）*/
 #endif
 /**************************************************************************

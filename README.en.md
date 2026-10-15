@@ -56,17 +56,29 @@ Flashing: the control board's MicroUSB (CH340G) supports serial ISP — use FlyM
 ## Offline verification (no hardware required)
 
 ```bash
-python tools/fw_prep/run_all_tests.py     # all of the below, summarized
+python tools/fw_prep/run_all_tests.py     # all nine checks, summarized
+# on a GBK console, set PYTHONIOENCODING=utf-8 first (the summary table contains non-ASCII)
 ```
 
 | Check | What it proves |
 |---|---|
-| 4 native unit-test suites (protocol 117 / sensor 1235 / patrol 76 / param 29 asserts) | algorithms and the decoder are correct on a PC |
+| 4 native unit-test suites (protocol 117 / sensor 1235 / **patrol 80** / param 29 asserts) | algorithms and the decoder are correct on a PC |
 | Shared protocol vectors ([`docs/protocol/test_vectors.json`](docs/protocol/test_vectors.json)) | Python reference ↔ host C++ ↔ firmware all agree (CRC 4 + frames 16 + streams 6) |
-| `check_vector_table.py` / `check_isr_safety.py` / `pin_check.py` | interrupt vectors, "no RTOS API inside ISRs", pin map vs. the finished PCB |
-| `make strict` (conversion/shadow/missing-prototype warnings) | 19 self-written / hand-modified files compile with **0 warnings** |
+| `check_vector_table.py` / `check_isr_safety.py` / `pin_check.py` / `tune.py --selftest` | interrupt vectors, "no RTOS API inside ISRs", pin map vs. the finished PCB, tuner codec — **9 checks in total** |
+| `make strict` (conversion/shadow/missing-prototype warnings) | 19 self-written / hand-modified files compile with **0 warnings** — ⚠️ **run `make clean` first**, otherwise an incremental build may compile nothing and "0 warnings" is a false green |
 
-Current footprint: **Flash 65,724 B (6.27 %) / RAM 32,816 B (25.04 %)** (measured 2026-10-13).
+Current footprint: **Flash ≈ 66.5 KB / RAM ≈ 32.8 KB** (measured 2026-10-15; only the rounded
+figures are quoted on purpose, so they do not go stale). ⚠️ The bare-metal comparison build
+(`make USE_RTOS=0`) **does not compile at the moment** (see `firmware/README.md` §六).
+
+Protocol version: **v1.2** (v1.1 frozen + the two new uplink frames **`0x15` diagnostics** (N=16, 1 Hz)
+and **`0x16` control-loop internals** (N=20, 1 Hz; byte 19 = firmware version `(month<<4)|day`, now `0xAF`)).
+
+Bench state (2026-10-15): only the **MQ-135 is fitted, in `J13`** (`J10` empty, the MQ-2 module is
+burnt and awaiting replacement); DHT11 fine; battery 11.8 V; **OLED displays normally** —
+earlier "no sensors ready" / "OLED garbled" notes are **resolved**. Bluetooth: Windows SPP pairs but
+**exposes no COM port**, and this Qt build has no Qt Bluetooth module — so wiring (USART1) is the
+primary link.
 
 ## PC-side tuning tool
 

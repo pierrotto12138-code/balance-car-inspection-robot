@@ -1,7 +1,9 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QElapsedTimer>
 #include <QEventLoop>
+#include <QHash>
 #include <QTextStream>
 #include <QTimer>
 
@@ -217,6 +219,115 @@ int runSelfTest(double seconds)
     return ok ? 0 : 1;
 }
 
+/// 真机只读探测：打开真实串口，把收到的帧/解出的状态打印出来。
+///
+/// 为什么需要它（而不是"打开界面自己看"）：
+///   ① 联调第一现场永远是"端口打开了吗、帧在不在涨、**哪些命令字真的在发**" ——
+///      命令行版能把这些数一次打全，也便于贴进联调记录；
+///   ② 它**默认不发任何下行帧**，所以是一个"只监听"的工具。
+///      ⚠️ 但固件的失联保护是"500 ms 没收到任何下行帧 → 安全停车"（协议 §五），
+///      所以纯监听会让正在跑的车停下来 —— 要边跑边看请加 `--probe-heartbeat`，
+///      它每 200 ms 发一条 0x1F 心跳（协议 §七 约定 7 推荐的做法），车就不会停。
+int runProbe(const QString &port, int baud, double seconds, bool heartbeat)
+{
+    io::LinkManager mgr;
+    mgr.setMode(io::LinkKind::Wire, io::LinkManager::Mode::Serial);
+    io::SerialConfig cfg = mgr.serialConfig(io::LinkKind::Wire);
+    cfg.portName = port;
+    cfg.baudRate = baud;
+    cfg.autoReconnect = false; // 探测工具不需要自动重连：连不上就要立刻知道
+    mgr.setSerialConfig(io::LinkKind::Wire, cfg);
+
+    domain::VehicleState state;
+    QObject::connect(&mgr, &io::LinkManager::frameReady, &state, &domain::VehicleState::onFrame);
+
+    QHash<quint8, quint64> perCmd;
+    QObject::connect(&mgr, &io::LinkManager::frameReady,
+                     [&perCmd](io::LinkKind, quint8 cmd, const QByteArray &) { ++perCmd[cmd]; });
+
+    QTextStream out(stdout);
+    // 链路的每一次状态变化都要打出来 —— "连不上"和"连上了但没数据"是两回事，
+    // 而端口被占用（FlyMcu/别的工具开着）是联调时最常见的一种，必须当场看得见。
+    QObject::connect(&mgr, &io::LinkManager::linkStateChanged,
+                     [&out](io::LinkKind k, io::LinkState st, const QString &detail) {
+                         out << QStringLiteral("  [链路] %1：%2 %3\n")
+                                    .arg(QString::fromUtf8(io::linkName(k)),
+                                         QString::fromUtf8(io::stateName(st)), detail);
+                         out.flush();
+                     });
+
+    out << QStringLiteral("只读探测 %1 @ %2 8N1，%3 s%4\n")
+               .arg(port)
+               .arg(baud)
+               .arg(seconds, 0, 'f', 1)
+               .arg(heartbeat ? QStringLiteral("（每 200 ms 发 0x1F 心跳，车不会因失联停车）")
+                              : QStringLiteral("（**不发任何下行帧** —— 固件 500 ms 后会安全停车）"));
+    if (!heartbeat) {
+        out << QStringLiteral("提示：若车正在跑，请改用 --probe-heartbeat，避免把它“探”停。\n");
+    }
+    out.flush();
+
+    mgr.open(io::LinkKind::Wire);
+
+    QEventLoop loop;
+    QTimer hb;
+    if (heartbeat) {
+        hb.setInterval(200);
+        QObject::connect(&hb, &QTimer::timeout, [&mgr]() {
+            mgr.sendTo(io::LinkKind::Wire, proto::up::kHeartbeat, QByteArray());
+        });
+        hb.start();
+    }
+    QElapsedTimer wall;
+    wall.start();
+    QTimer::singleShot(static_cast<int>(seconds * 1000.0), &loop, &QEventLoop::quit);
+    loop.exec();
+    hb.stop();
+
+    // ★ 在**关闭链路之前**先记两个数：
+    //     · 实测时长 —— 定时器有没有按时结束；
+    //     · 结束时"最近帧年龄" —— 数据流是一直在来，还是中途停了。
+    //   这两个数把"没数据"分成两种完全不同的故障：流停了（固件/线的问题）
+    //   还是收尾慢（我们自己的问题，例如关闭串口时阻塞）。
+    //   2026-10-15 打真机时正是靠"年龄恒为 ~3000 ms"发现了关闭链路会阻塞的坑。
+    const qint64 elapsedAtStop = wall.elapsed();
+    const qint64 ageAtStop = state.anyFrameAgeMs();
+
+    const io::LinkStats s = mgr.stats(io::LinkKind::Wire);
+    const qint64 closeBegin = wall.elapsed();
+    mgr.close(io::LinkKind::Wire);
+    const qint64 closeCost = wall.elapsed() - closeBegin;
+
+    out << QStringLiteral("\n探测时长：设定 %1 s · 实测 %2 ms ｜ 结束时最近帧年龄 %3 ms")
+               .arg(seconds, 0, 'f', 1)
+               .arg(elapsedAtStop)
+               .arg(ageAtStop < 0 ? QStringLiteral("无（一帧都没来）") : QString::number(ageAtStop))
+        << QLatin1Char('\n');
+    out << QStringLiteral("关闭链路耗时：%1 ms%2\n")
+               .arg(closeCost)
+               .arg(closeCost > 500 ? QStringLiteral("（偏大！关闭串口不应阻塞这么久）") : QString())
+        << QStringLiteral("链路：收 %1 B / 发 %2 B · 解帧 %3 · 丢帧 %4\n")
+               .arg(s.bytesRx)
+               .arg(s.bytesTx)
+               .arg(s.framesOk)
+               .arg(s.framesDropped);
+    QString cover;
+    for (quint8 cmd : {proto::up::kPose, proto::up::kMotion, proto::up::kTask, proto::up::kEvent,
+                       proto::up::kEnvGas, proto::up::kDiag, proto::up::kLoop,
+                       proto::up::kHeartbeat}) {
+        cover += QStringLiteral("  0x%1: %2 条\n")
+                     .arg(cmd, 2, 16, QLatin1Char('0'))
+                     .arg(perCmd.value(cmd, 0));
+    }
+    out << QStringLiteral("各命令字实际收到条数（缺哪个 = 固件没发那个命令）：\n") << cover;
+    out << QStringLiteral("\n【状态聚合】\n") << describeState(state, mgr);
+    const bool ok = s.framesOk > 0 && state.malformedFrames() == 0;
+    out << (ok ? QStringLiteral("探测通过 ✅（真实串口→解帧→domain 全链路可用）\n")
+               : QStringLiteral("探测未通过 ❌（没收到帧，或出现格式错帧）\n"));
+    out.flush();
+    return ok ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -243,10 +354,43 @@ int main(int argc, char *argv[])
     QCommandLineOption demo(QStringLiteral("demo"),
                             QStringLiteral("演示模式：两条链路用假源并自动连接（打开就有数据在跑）"));
     parser.addOption(demo);
+    // 自动截图：把界面渲染成 PNG 后退出 —— 文档里的截图用它生成，
+    // 免得"手工截图 → 界面改一点 → 图全过期"（配合 --demo 可在无板子时出图）
+    QCommandLineOption shot(QStringLiteral("shot"),
+                            QStringLiteral("把界面渲染为 PNG 后退出（配合 --demo 出文档截图）"),
+                            QStringLiteral("路径"));
+    parser.addOption(shot);
+    QCommandLineOption shotDelay(QStringLiteral("shot-delay"),
+                                 QStringLiteral("截图前等待的毫秒数（让假源先攒一点数据）"),
+                                 QStringLiteral("毫秒"), QStringLiteral("2500"));
+    parser.addOption(shotDelay);
+    QCommandLineOption shotTab(QStringLiteral("shot-tab"),
+                               QStringLiteral("截图对应的导航页：0=总览 1=通信链路 2=协议自检"),
+                               QStringLiteral("页号"), QStringLiteral("0"));
+    parser.addOption(shotTab);
+    // 真机只读探测（不需要界面，用来在联调第一现场把"链路/命令覆盖/状态"一次打全）
+    QCommandLineOption probe(QStringLiteral("probe"),
+                             QStringLiteral("真机只读探测：打开指定串口，打印链路统计、各命令字"
+                                            "收到条数与状态聚合后退出"),
+                             QStringLiteral("端口"));
+    parser.addOption(probe);
+    QCommandLineOption probeBaud(QStringLiteral("probe-baud"), QStringLiteral("探测波特率"),
+                                 QStringLiteral("波特率"), QStringLiteral("115200"));
+    parser.addOption(probeBaud);
+    QCommandLineOption probeSeconds(QStringLiteral("probe-seconds"), QStringLiteral("探测时长（秒）"),
+                                    QStringLiteral("秒"), QStringLiteral("5"));
+    parser.addOption(probeSeconds);
+    QCommandLineOption probeHb(QStringLiteral("probe-heartbeat"),
+                               QStringLiteral("探测期间每 200 ms 发 0x1F 心跳（车不会因失联停车）"));
+    parser.addOption(probeHb);
     parser.process(app);
 
     if (parser.isSet(selftest)) {
         return runSelfTest(parser.value(selftest).toDouble());
+    }
+    if (parser.isSet(probe)) {
+        return runProbe(parser.value(probe), parser.value(probeBaud).toInt(),
+                        parser.value(probeSeconds).toDouble(), parser.isSet(probeHb));
     }
 
     io::LinkManager manager;
@@ -263,6 +407,20 @@ int main(int argc, char *argv[])
     w.show();
     if (parser.isSet(demo)) {
         manager.openAll(); // 窗口显示后再开链路，界面上能直接看到状态变化
+    }
+    if (parser.isSet(shot)) {
+        w.showPage(parser.value(shotTab).toInt());
+        const int delay = parser.value(shotDelay).toInt();
+        const QString path = parser.value(shot);
+        QTimer::singleShot(delay, &app, [&w, &manager, path]() {
+            // 先截图再关链路：关掉链路会让"链路/新鲜度"那几行变成未打开，
+            // 图就失去了它要说明的东西。
+            const bool ok = w.grab().save(path);
+            QTextStream(stdout) << QStringLiteral("截图%1：%2\n")
+                                       .arg(ok ? QStringLiteral("已保存") : QStringLiteral("保存失败"), path);
+            manager.closeAll();
+            QCoreApplication::quit();
+        });
     }
     return app.exec();
 }

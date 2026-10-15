@@ -93,6 +93,7 @@ void ValueCard::setValue(double v)
 {
     m_last = v;
     m_hasValue = true;
+    relayoutValue(); // 数字按"最坏位数"预留宽度，单位与副标题就不会跟着抖
     m_unitLabel->setText(m_unit);
     m_value->setText(domain::units::number(v, m_decimals));
     setSeverity(domain::Severity::Ok);
@@ -102,6 +103,11 @@ void ValueCard::setText(const QString &text)
 {
     m_hasValue = false;
     m_unitLabel->setText(m_unit);
+    // ★ 文本类取值（任务/阶段/档位/页号等枚举）**不能**按数字预留宽度，
+    //   否则"自主巡航"会被裁成"自主巡" —— 数值牌既显示数字又显示枚举，
+    //   两种模式的宽度策略必须分开（这个坑在 P1 截图上直接看出来了）。
+    m_value->setMinimumWidth(0);
+    m_value->setMaximumWidth(QWIDGETSIZE_MAX);
     m_value->setText(text);
     setSeverity(domain::Severity::Ok);
 }
@@ -110,6 +116,7 @@ void ValueCard::setInvalid(const QString &hint)
 {
     m_hasValue = false;
     m_value->setText(QStringLiteral("--"));
+    relayoutValue(); // 回到"数字"模式：恢复预留宽度
     setSeverity(domain::Severity::Unknown);
     setSub(hint);
 }
