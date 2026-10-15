@@ -558,10 +558,12 @@ void OverviewPanel::refresh()
                            ? QStringLiteral("主链路：无（两条都未连接）")
                            : QStringLiteral("主链路：%1（有线优先，协议 §七 约定 6）").arg(linkCn(primary)));
     m_counters->setText(QStringLiteral("本机统计：活动告警 %1 项 · 格式错帧 %2 · 协议外命令 %3 · "
-                                       "已收到命令 0x10/0x11/0x12/0x14/0x15/0x16 = %4/%5/%6/%7/%8/%9")
+                                       "重复帧 %4（两条链路都发，已去重） · "
+                                       "已收到命令 0x10/0x11/0x12/0x14/0x15/0x16 = %5/%6/%7/%8/%9/%10")
                             .arg(m_alarm != nullptr ? m_alarm->activeCount() : 0)
                             .arg(st.malformedFrames())
                             .arg(st.unknownFrames())
+                            .arg(st.duplicateFrames())
                             .arg(st.received(proto::up::kPose) ? QStringLiteral("有") : QStringLiteral("无"),
                                  st.received(proto::up::kMotion) ? QStringLiteral("有") : QStringLiteral("无"),
                                  st.received(proto::up::kTask) ? QStringLiteral("有") : QStringLiteral("无"),

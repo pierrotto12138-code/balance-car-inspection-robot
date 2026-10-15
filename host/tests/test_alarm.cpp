@@ -238,33 +238,55 @@ private slots:
         data::EventLog log;
         QSignalSpy added(&log, &data::EventLog::entryAdded);
 
-        log.onFrame(io::LinkKind::Wire, proto::up::kEvent,
-                    testframes::event(proto::EventCode::EstopReceived, 1000));
+        EventData stop;
+        stop.code = proto::EventCode::EstopReceived;
+        stop.timestampMs = 1000;
+        log.onEvent(stop, io::LinkKind::Wire);
         QCOMPARE(added.count(), 1);
         QVERIFY(log.at(0).safety);
         QCOMPARE(log.size(), 1);
 
         QTest::qWait(60);
-        log.onFrame(io::LinkKind::Wire, proto::up::kEvent,
-                    testframes::event(proto::EventCode::SafetyReleased, 5000));
+        EventData release;
+        release.code = proto::EventCode::SafetyReleased;
+        release.timestampMs = 5000;
+        log.onEvent(release, io::LinkKind::Wire);
         QCOMPARE(log.size(), 2);
-        const data::EventEntry &release = log.at(1);
-        QVERIFY2(release.sinceSafetyStopMs >= 50,
-                 qPrintable(QStringLiteral("停车时长应 ≥50 ms，实际 %1").arg(release.sinceSafetyStopMs)));
-        QVERIFY(release.detail.contains(QStringLiteral("停车时长")));
+        const data::EventEntry &releaseEntry = log.at(1);
+        QVERIFY2(releaseEntry.sinceSafetyStopMs >= 50,
+                 qPrintable(QStringLiteral("停车时长应 ≥50 ms，实际 %1")
+                                .arg(releaseEntry.sinceSafetyStopMs)));
+        QVERIFY(releaseEntry.detail.contains(QStringLiteral("停车时长")));
         QVERIFY(log.shortestSafetyStopMs() >= 50);
+    }
 
-        // 非事件帧不该进事件流（否则日志会被周期帧刷满）
-        log.onFrame(io::LinkKind::Wire, proto::up::kPose, testframes::pose());
-        log.onFrame(io::LinkKind::Wire, proto::up::kEnvGas, testframes::envPpm(1, 1));
+    void eventLog_dedupesSameEventFromTwoLinks()
+    {
+        // 两条链路都会发同样的事件帧（协议 §七 约定 6）—— 去重后事件流里**只应有一条**。
+        // 这条断言守的是"复盘时以为急停发生了两次"这类误判。
+        VehicleState st;
+        data::EventLog log;
+        QObject::connect(&st, &VehicleState::eventReceived, &log, &data::EventLog::onEvent);
+
+        const QByteArray frame = testframes::event(proto::EventCode::EstopReceived, 7000);
+        st.onFrame(io::LinkKind::Wire, proto::up::kEvent, frame);
+        st.onFrame(io::LinkKind::Bluetooth, proto::up::kEvent, frame); // 同一次停车的另一次投递
+        QCOMPARE(log.size(), 1);
+        QCOMPARE(st.duplicateFrames(), quint64(1));
+
+        // 机器人侧时间戳不同 ⇒ 是**另一次**停车事件，必须各自留档
+        st.onFrame(io::LinkKind::Wire, proto::up::kEvent,
+                   testframes::event(proto::EventCode::EstopReceived, 9000));
         QCOMPARE(log.size(), 2);
     }
 
     void eventLog_recordsRobotEventsAndLocalAlarms()
     {
         data::EventLog log;
-        log.onFrame(io::LinkKind::Bluetooth, proto::up::kEvent,
-                    testframes::event(proto::EventCode::GasOverLimit, 777));
+        EventData ev;
+        ev.code = proto::EventCode::GasOverLimit;
+        ev.timestampMs = 777;
+        log.onEvent(ev, io::LinkKind::Bluetooth);
         QCOMPARE(log.size(), 1);
         QCOMPARE(log.at(0).title, QString::fromUtf8(domain::eventName(proto::EventCode::GasOverLimit)));
         QCOMPARE(log.at(0).robotTsMs, quint32(777));
@@ -289,6 +311,16 @@ private slots:
         QVERIFY(log.at(1).detail.contains(QStringLiteral("420.5")));
         QVERIFY(log.at(2).detail.contains(QStringLiteral("3.0 s"))); // 持续 3 s
 
+        // 低压解除要看"最低"而不是"峰值"（措辞错了会被读成"电压冲到多高"）
+        AlarmRecord low = r;
+        low.key = AlarmEngine::kBatteryLow;
+        low.title = QStringLiteral("电池低压");
+        low.unit = QStringLiteral("V");
+        low.value = 11.05;
+        low.peak = 11.02;
+        log.onAlarmCleared(low);
+        QVERIFY(log.at(3).detail.contains(QStringLiteral("最低")));
+
         log.clear();
         QCOMPARE(log.size(), 0);
         QCOMPARE(log.shortestSafetyStopMs(), qint64(-1));
@@ -305,7 +337,7 @@ private slots:
         AlarmEngine alarm;
         data::EventLog log;
         QObject::connect(&mgr, &io::LinkManager::frameReady, &st, &VehicleState::onFrame);
-        QObject::connect(&mgr, &io::LinkManager::frameReady, &log, &data::EventLog::onFrame);
+        QObject::connect(&st, &VehicleState::eventReceived, &log, &data::EventLog::onEvent);
         QObject::connect(&st, &VehicleState::dataUpdated, &alarm,
                          [&st, &alarm](quint8 cmd) { alarm.onFrameDecoded(st, cmd); });
         QObject::connect(&alarm, &AlarmEngine::alarmRaised, &log, &data::EventLog::onAlarmRaised);

@@ -32,6 +32,19 @@
 
 using namespace domain;
 
+namespace {
+
+/// 造一个事件帧的解码结果（事件流现在吃的是"已去重的事件"，不再吃原始字节）
+EventData ev(proto::EventCode code, quint32 ts)
+{
+    EventData e;
+    e.code = code;
+    e.timestampMs = ts;
+    return e;
+}
+
+} // namespace
+
 class TestUi : public QObject
 {
     Q_OBJECT
@@ -182,11 +195,9 @@ private slots:
         QVERIFY(table != nullptr);
         QCOMPARE(table->rowCount(), 0);
 
-        log.onFrame(io::LinkKind::Wire, proto::up::kEvent,
-                    testframes::event(proto::EventCode::EstopReceived, 1000));
+        log.onEvent(ev(proto::EventCode::EstopReceived, 1000), io::LinkKind::Wire);
         QTest::qWait(30);
-        log.onFrame(io::LinkKind::Wire, proto::up::kEvent,
-                    testframes::event(proto::EventCode::SafetyReleased, 9000));
+        log.onEvent(ev(proto::EventCode::SafetyReleased, 9000), io::LinkKind::Wire);
         QCOMPARE(table->rowCount(), 2);
 
         // 安全事件的"停车时长"必须写在行里（复盘时不必自己两行相减）
@@ -202,8 +213,7 @@ private slots:
         data::EventEntry info;
         info.title = QStringLiteral("任务开始");
         info.code = static_cast<quint8>(proto::EventCode::TaskStart);
-        log.onFrame(io::LinkKind::Wire, proto::up::kEvent,
-                    testframes::event(proto::EventCode::TaskStart, 100));
+        log.onEvent(ev(proto::EventCode::TaskStart, 100), io::LinkKind::Wire);
         QCOMPARE(table->rowCount(), 3);
     }
 

@@ -22,19 +22,11 @@ void EventLog::append(EventEntry e)
     emit entryAdded(m_entries.last());
 }
 
-void EventLog::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data)
+void EventLog::onEvent(const domain::EventData &e, io::LinkKind kind)
 {
-    if (cmd != proto::up::kEvent) {
-        return;
-    }
-    domain::EventData e;
-    if (!domain::decodeEvent(data, e)) {
-        return; // 长度不符：由 VehicleState 计数，这里不制造"半条事件"
-    }
-
     EventEntry entry;
     entry.kind = kind;
-    entry.cmd = cmd;
+    entry.cmd = proto::up::kEvent;
     entry.code = static_cast<quint8>(e.code);
     entry.robotTsMs = e.timestampMs;
     entry.title = QString::fromUtf8(domain::eventName(e.code));

@@ -245,8 +245,11 @@ QByteArray ReplayLink::makeEnvGas(quint32 tMs)
     proto::putU16(d, 2345);
     // 每 30 s 来一次"气体冲高"，方便看报警与曲线
     const bool spike = inSpike(tMs);
-    const double mq2 = spike ? 420.0 : 45.0 + 10.0 * std::sin(tMs / 3000.0);
-    const double mq135 = spike ? 610.0 : 62.0 + 12.0 * std::cos(tMs / 2500.0);
+    // 常态值必须**明显低于**协议默认阈值（30 / 50 ppm），否则假源会在"没有异常"的时候
+    // 一直报警 —— 那样演示时就分不清"报警是冲高引起的"还是"门槛设得不对"。
+    // 取值贴近真机台架的本底（决策 49：清洁空气本底 3.6 / 4.3 ppm）。
+    const double mq2 = spike ? 420.0 : 9.0 + 4.0 * std::sin(tMs / 3000.0);
+    const double mq135 = spike ? 610.0 : 14.0 + 5.0 * std::cos(tMs / 2500.0);
     proto::putU16(d, static_cast<uint16_t>(mq2 * 10));
     proto::putU16(d, static_cast<uint16_t>(mq135 * 10));
     proto::putI16(d, 256);   // 25.6 ℃

@@ -25,6 +25,8 @@
 
 #include <cmath>
 
+#include "frame_factory.h"
+
 using namespace domain;
 
 namespace {
@@ -308,6 +310,34 @@ private slots:
         QVERIFY(faultFlagsText(0x0B).contains(QStringLiteral("气体")));
         QVERIFY(faultFlagsText(0x0B).contains(QStringLiteral("传感器")));
         QCOMPARE(faultFlagsText(0), QStringLiteral("无"));
+    }
+
+    void state_dedupesSameFrameFromTwoLinks()
+    {
+        // 协议 §七 约定 6：两条链路都会发同样的周期帧。**同一次物理测量只能算一次** ——
+        // 否则告警的"连续确认 3 帧"会被 1.5 次真实采样满足，曲线也会重复采样。
+        VehicleState st;
+        QSignalSpy updates(&st, &VehicleState::dataUpdated);
+
+        const QByteArray f = testframes::envPpm(20.0, 30.0);
+        st.onFrame(io::LinkKind::Wire, proto::up::kEnvGas, f);
+        st.onFrame(io::LinkKind::Bluetooth, proto::up::kEnvGas, f); // 同一次上报的第二次投递
+        QCOMPARE(updates.count(), 1);
+        QCOMPARE(st.duplicateFrames(), quint64(1));
+        // 链路统计仍各自计数（"每条链路收到多少帧"是链路质量，不能被去重抹掉）
+        QCOMPARE(st.frameCount(io::LinkKind::Wire), quint64(1));
+        QCOMPARE(st.frameCount(io::LinkKind::Bluetooth), quint64(1));
+        QCOMPARE(int(st.sourceOf(proto::up::kEnvGas)), int(io::LinkKind::Bluetooth)); // 来源跟最新
+
+        // 同一条链路连发两帧相同内容（20 Hz 下很常见）**不是**重复
+        st.onFrame(io::LinkKind::Wire, proto::up::kPose, testframes::pose());
+        st.onFrame(io::LinkKind::Wire, proto::up::kPose, testframes::pose());
+        QCOMPARE(st.duplicateFrames(), quint64(1));
+
+        // 内容不同 ⇒ 是另一次测量
+        st.onFrame(io::LinkKind::Bluetooth, proto::up::kEnvGas, testframes::envPpm(21.0, 30.0));
+        QCOMPARE(st.duplicateFrames(), quint64(1));
+        QCOMPARE(updates.count(), 3);
     }
 
     void state_oledRateAndTicks()

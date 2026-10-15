@@ -183,6 +183,10 @@ void VehicleState::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data
     m_lastAnyKind = kind;
 
     bool ok = false;
+    // 0x13 的解码结果要等"去重判定"之后再交给 handleEvent（见函数末尾）
+    EventData evData;
+    bool haveEvent = false;
+
     switch (cmd) {
     case proto::up::kPose: {
         PoseData v;
@@ -244,11 +248,8 @@ void VehicleState::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data
         break;
     }
     case proto::up::kEvent: {
-        EventData v;
-        ok = decodeEvent(data, v);
-        if (ok) {
-            handleEvent(v, kind);
-        }
+        ok = decodeEvent(data, evData);
+        haveEvent = ok;
         break;
     }
     case proto::up::kHeartbeat:
@@ -268,8 +269,36 @@ void VehicleState::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data
         emit changed();
         return;
     }
+
+    // ---- 跨链路去重（★ 必须在聚合层做一次）----
+    // 协议 §七 约定 6：**两条链路都会发同样的周期帧与事件**。同一次物理测量若被当成两次，
+    // 下游会集体出错，而且现象都很隐蔽：
+    //   · 告警的"连续确认 3 帧"会被 1.5 次真实采样满足（提前报警）；
+    //   · 曲线同一时刻采两个样（看上去只是"线更粗"）；
+    //   · 事件流每条事件出现两遍（复盘时以为发生了两次急停）。
+    // 判据：同命令字 + 内容完全相同 + **来自不同链路** + 间隔 ≤150 ms。
+    // 注意"不同链路"这一条：同一条链路连发两帧相同内容（20 Hz 下很常见）**不是**重复。
+    bool duplicate = false;
+    {
+        LastFrame &lf = m_lastFrame[cmd];
+        if (lf.valid && lf.kind != kind && lf.data == data && (t - lf.atMs) <= kDuplicateWindowMs) {
+            duplicate = true;
+            ++m_duplicates;
+        }
+        lf.data = data;
+        lf.kind = kind;
+        lf.atMs = t;
+        lf.valid = true;
+    }
+
     m_rec.insert(cmd, Record{kind, t});
-    emit dataUpdated(cmd);
+    if (!duplicate) {
+        // dataUpdated 是"**这是一次新的测量**"的信号：曲线采样与告警连续确认都接它
+        emit dataUpdated(cmd);
+        if (haveEvent) {
+            handleEvent(evData, kind);
+        }
+    }
     emit changed();
 }
 
@@ -351,6 +380,8 @@ void VehicleState::reset()
     m_lastAnyKind = io::LinkKind::Count;
     m_malformed = 0;
     m_unknown = 0;
+    m_duplicates = 0;
+    m_lastFrame.clear();
     m_eventLatched = false;
     m_latchReason.clear();
     m_warnReason.clear();

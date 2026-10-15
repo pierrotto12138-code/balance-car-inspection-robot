@@ -89,7 +89,7 @@ int runSelfTest(double seconds, double rate)
     domain::AlarmEngine alarm;
     data::EventLog log;
     QObject::connect(&mgr, &io::LinkManager::frameReady, &state, &domain::VehicleState::onFrame);
-    QObject::connect(&mgr, &io::LinkManager::frameReady, &log, &data::EventLog::onFrame);
+    QObject::connect(&state, &domain::VehicleState::eventReceived, &log, &data::EventLog::onEvent);
     QObject::connect(&state, &domain::VehicleState::dataUpdated, &alarm,
                      [&state, &alarm](quint8 cmd) { alarm.onFrameDecoded(state, cmd); });
     QObject::connect(&alarm, &domain::AlarmEngine::alarmRaised, &log, &data::EventLog::onAlarmRaised);
@@ -271,9 +271,11 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
             .arg(mgr.primaryLink() == io::LinkKind::Count
                      ? QStringLiteral("无")
                      : QString::fromUtf8(io::linkName(mgr.primaryLink()))));
-    add(QStringLiteral("  质量：格式错帧 %1 · 协议外命令 %2（都应为 0）")
+    add(QStringLiteral("  质量：格式错帧 %1 · 协议外命令 %2 · 重复帧 %3（两条链路都发，已去重）"
+                       "（前两项都应为 0）")
             .arg(st.malformedFrames())
-            .arg(st.unknownFrames()));
+            .arg(st.unknownFrames())
+            .arg(st.duplicateFrames()));
     if (st.lastEvent().timestampMs != 0 || st.received(proto::up::kEvent)) {
         add(QStringLiteral("  最近事件：%1（机器人时间戳 %2 ms）")
                 .arg(QString::fromUtf8(domain::eventName(st.lastEvent().code)))
@@ -473,7 +475,7 @@ int main(int argc, char *argv[])
 
     // ① io → domain/data：跨线程用队列连接传值类型（解析在工作线程完成，见 io/serial_link.h）
     QObject::connect(&manager, &io::LinkManager::frameReady, &state, &domain::VehicleState::onFrame);
-    QObject::connect(&manager, &io::LinkManager::frameReady, &log, &data::EventLog::onFrame);
+    QObject::connect(&state, &domain::VehicleState::eventReceived, &log, &data::EventLog::onEvent);
     // ② domain 内部：每解出一帧就让告警引擎按该帧的语义判一次（阈值类规则）
     QObject::connect(&state, &domain::VehicleState::dataUpdated, &alarm,
                      [&state, &alarm](quint8 cmd) { alarm.onFrameDecoded(state, cmd); });

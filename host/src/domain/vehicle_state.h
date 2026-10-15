@@ -76,6 +76,8 @@ public:
     quint64 frameCount(io::LinkKind kind) const;
     /// 该链路最近一次收到帧距今多久（<0 = 该链路从未收到过帧）
     qint64 linkAgeMs(io::LinkKind kind) const;
+    /// 被判定为"同一次测量的重复投递"而合并掉的帧数（两条链路都发同样的帧，见 onFrame 注释）
+    quint64 duplicateFrames() const { return m_duplicates; }
     /// 格式错帧数（长度不符）：**必须能被看见** —— 它是"固件与协议不一致"的第一证据
     quint64 malformedFrames() const { return m_malformed; }
     /// 协议外命令数（可能是将来新增的合法命令，不作为错误）
@@ -123,6 +125,18 @@ private:
         qint64 atMs = -1;
     };
 
+    /// 每个命令字最近一次收到的原始数据（用于"两条链路发同一帧"的去重）
+    struct LastFrame {
+        QByteArray data;
+        io::LinkKind kind = io::LinkKind::Count;
+        qint64 atMs = -1;
+        bool valid = false;
+    };
+
+    /// 跨链路去重的时间窗：两条链路是"同一次上报的两次投递"，间隔通常 <10 ms；
+    /// 取 150 ms 足够宽（远小于最慢周期帧 1 s），又不会把两次真实测量合并。
+    static constexpr qint64 kDuplicateWindowMs = 150;
+
     qint64 nowMs() const { return m_clock.elapsed(); }
     void handleEvent(const EventData &e, io::LinkKind kind);
     void updateOledRate(const DiagData &d);
@@ -139,6 +153,7 @@ private:
     EventData m_lastEvent;
 
     QHash<quint8, Record> m_rec; ///< 命令字 → 最近一次收到的来源与时刻
+    QHash<quint8, LastFrame> m_lastFrame; ///< 命令字 → 最近一次收到的原始数据（去重用）
 
     quint64 m_linkFrames[static_cast<int>(io::LinkKind::Count)] = {0, 0};
     qint64 m_linkLastMs[static_cast<int>(io::LinkKind::Count)] = {-1, -1};
@@ -147,6 +162,7 @@ private:
 
     quint64 m_malformed = 0;
     quint64 m_unknown = 0;
+    quint64 m_duplicates = 0;
 
     // 安全：事件给"锁存/解除的时刻"，0x15 的位给"现在的状态"，两者相与
     bool m_eventLatched = false;

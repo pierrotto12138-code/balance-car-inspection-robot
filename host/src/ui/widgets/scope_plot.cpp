@@ -225,24 +225,20 @@ void ScopePlot::addMarker(double tSec, const QString &text, const QColor &color)
 
     // 只留最近 40 个：否则长时间运行会把整张图铺满标记
     while (m_markers.size() > kMaxMarkers) {
-        QCPItemLine *l = m_markers.takeFirst();
-        QCPItemText *t = m_markerLabels.takeFirst();
-        m_plot->removeItem(l);
-        m_plot->removeItem(t);
-        delete l;
-        delete t;
+        // ★ QCustomPlot::removeItem() **会自己 delete 这个 item**（它接管所有权）——
+        //   再 delete 一次就是 double free（本项目在 test_ui 里当场崩在 clearMarkers）。
+        m_plot->removeItem(m_markers.takeFirst());
+        m_plot->removeItem(m_markerLabels.takeFirst());
     }
 }
 
 void ScopePlot::clearMarkers()
 {
     for (QCPItemLine *l : m_markers) {
-        m_plot->removeItem(l);
-        delete l;
+        m_plot->removeItem(l); // 同上：removeItem 即删除，不要再 delete
     }
     for (QCPItemText *t : m_markerLabels) {
         m_plot->removeItem(t);
-        delete t;
     }
     m_markers.clear();
     m_markerLabels.clear();

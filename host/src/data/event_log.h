@@ -62,8 +62,13 @@ public:
     qint64 shortestSafetyStopMs() const;
 
 public slots:
-    /// 机器人事件帧（0x13）—— 由 `io::LinkManager::frameReady` 直接驱动
-    void onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data);
+    /// 机器人事件帧（0x13）—— 由 `domain::VehicleState::eventReceived` 驱动。
+    ///
+    /// ★ 为什么不再直接接 `frameReady`：两条链路都会发同样的事件帧（协议 §七 约定 6），
+    ///   直接接原始帧会让**每条事件在流里出现两遍**（复盘时会误以为急停发生了两次）。
+    ///   现在去重统一在 `VehicleState` 做（它本来就要按命令字记录"最近一帧"），
+    ///   这里只收"确实是一次新事件"的通知。
+    void onEvent(const domain::EventData &e, io::LinkKind kind);
     /// 告警发生/解除（由 `domain::AlarmEngine` 驱动）
     void onAlarmRaised(const domain::AlarmRecord &rec);
     void onAlarmCleared(const domain::AlarmRecord &rec);
