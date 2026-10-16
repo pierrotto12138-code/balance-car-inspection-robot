@@ -465,8 +465,11 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
     // ---- 0x24 全量回读：把"实际生效值"与参数定义表逐项对照 ----
     if (readback) {
         out << QStringLiteral("\n【0x24 全量回读】请求 ID=0xFF → 收到 %1 条回显\n").arg(echoes.size());
-        // B 侧接口文档 §3.1 给出的本机定稿值（用于对照，不用于判对错）
-        static const double kFactory[7] = {300.0, 1.0, -80.0, -0.4, 0.5, 0.0, 0.0};
+        // 本机**实际生效**的定稿值（2026-10-16 真机回读复核；依据决策 77/78）：
+        //   Velocity_Kp/Ki = +80/+0.4（★ 原定稿 −80/−0.4 被范围校验拒绝，见给C侧文档 §3.1）
+        //   Turn_Kp/Kd     = 52/0.5   （★ 2026-10-15 现场启用转向环，启动期覆盖**被接受**）
+        // 用途只是对着表看"板子是不是这一版参数"，不用于判对错。
+        static const double kFactory[7] = {300.0, 1.0, 80.0, 0.4, 0.5, 52.0, 0.5};
         for (const data::PidParamInfo &p : data::pidParams()) {
             const bool have = echoes.contains(p.id);
             const double v = have ? double(echoes.value(p.id)) : 0.0;
@@ -478,8 +481,8 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
                 const data::ParamCheck chk = data::checkPidValue(p.id, v, &why);
                 const bool sameAsFactory = std::fabs(v - kFactory[p.id - 1]) < 1e-4;
                 verdict = (chk == data::ParamCheck::Ok)
-                              ? (sameAsFactory ? QStringLiteral("✔ 范围内，且等于 B 侧定稿值")
-                                               : QStringLiteral("✔ 范围内（与 B 侧定稿值不同：%1）")
+                              ? (sameAsFactory ? QStringLiteral("✔ 范围内，且等于本机定稿值（决策 77/78）")
+                                               : QStringLiteral("✔ 范围内（与本机定稿值不同：%1）")
                                                      .arg(kFactory[p.id - 1]))
                               : QStringLiteral("⚠ %1").arg(why);
             }

@@ -16,6 +16,10 @@
     python tools/fw_prep/tune.py -p COM5 --dump                   # 回读全部 PID 参数
     python tools/fw_prep/tune.py -p COM5 --set 3=85 --set 4=0.5   # 在线改（立即生效，回显实际值）
     python tools/fw_prep/tune.py -p COM5 --observe 20 --csv run1.csv   # 100 Hz 观测 + 统计 + CSV
+    python tools/fw_prep/tune.py -p COM5 --observe 20 --enable --csv bal.csv
+        # ★ 观测**正在平衡/运行**的车必须加 --enable：观测期间每 100 ms 发 0x20 使能=1（零速度），
+        #   既保活又解除安全锁存；不加的话 500 ms 后固件锁存停车，采到的就是"已停车"的数据
+        #   （2026-10-16 实测踩过）。只想看着停着的车、又不改变它状态 → 用 --keepalive（心跳，不解锁）
     python tools/fw_prep/tune.py -p COM5 --save                   # 存 Flash；--load 从 Flash 载入
     python tools/fw_prep/tune.py -p COM5 --monitor                # 常规监视（0x10/0x11/0x12/0x14）
     python tools/fw_prep/tune.py -p COM5 --estop                  # 紧急停机（0x2F）
@@ -373,9 +377,23 @@ def cmd_simple(link, cmd, payload=b"", expect=CMD_PID, wait=0.6, label=""):
         print(f"  {label}: 无回复")
 
 
-def cmd_observe(link, seconds, csv_path, quiet=False):
-    """调参观测模式：进 100 Hz、采样、统计、退模式。"""
-    print("进入调参观测模式（有线链路 100 Hz）…")
+def cmd_observe(link, seconds, csv_path, quiet=False, keepalive=None):
+    """调参观测模式：进 100 Hz、采样、统计、退模式。
+
+    keepalive：
+      None  —— 不发下行帧（★ 固件 500 ms 无下行帧即**安全锁存**，车会被"探停"，
+               观测到的是"电机已停"的数据 —— 2026-10-16 实测踩过）
+      "hb"  —— 每 200 ms 发 0x1F 心跳：保持在线，但**不解锁**（适合观测本来就停着的车）
+      "en"  —— 每 100 ms 发 0x20 使能=1（零速度）：保持在线**并解除安全锁存**，
+               是"观测正在平衡的车"的正确姿势
+    """
+    if keepalive == "en":
+        print("进入调参观测模式（有线链路 100 Hz）—— 每 100 ms 发 0x20 使能=1（保活+解锁，零速度）…")
+    elif keepalive == "hb":
+        print("进入调参观测模式（有线链路 100 Hz）—— 每 200 ms 发 0x1F 心跳（保活，不解锁）…")
+    else:
+        print("进入调参观测模式（有线链路 100 Hz）…⚠ 不发下行帧 ⇒ 固件 500 ms 后会安全锁存、"
+              "把车停下（要观测运行中的车请加 --enable 或 --keepalive）")
     link.send(CMD_PID, bytes([ID_TUNE_MODE, 0]) + f32(1.0))
     link.pump(0.3)
 
@@ -385,8 +403,18 @@ def cmd_observe(link, seconds, csv_path, quiet=False):
         csv_f.write("t_s,pitch_deg,gx_dps,gz_dps,speedL_mms,speedR_mms,pwm,dist_cm\n")
     pitch = []
     last_print = 0.0
+    next_ka = 0.0
     try:
         while time.monotonic() - t0 < seconds:
+            # ★ 保活/解锁必须自己发（否则固件把车锁存停住，观测数据就废了）
+            now = time.monotonic()
+            if keepalive and now >= next_ka:
+                if keepalive == "en":
+                    link.send(CMD_MOTION_DOWN, b"\x00\x00\x00\x00\x01")   # lin=0 ang=0 enable=1
+                    next_ka = now + 0.10
+                else:
+                    link.send(CMD_HEARTBEAT)
+                    next_ka = now + 0.20
             for d in link.pump(0.05):
                 t = time.monotonic() - t0
                 if d["kind"] == "pose":
@@ -421,14 +449,25 @@ def cmd_observe(link, seconds, csv_path, quiet=False):
     print(f"\n采集 {len(rows)} 帧 / {dur:.2f}s ≈ {len(rows)/dur:.1f} Hz"
           + (f"，已写 {csv_path}" if csv_path else ""))
     if pitch:
-        # 这几个统计量就是"调 PID 时该看的数"：抖动幅度看 std，振荡看零穿越率
-        zc = sum(1 for i in range(1, len(pitch)) if (pitch[i-1] - pitch[i]) * (pitch[i] - pitch[i+1]) < 0)
+        # 这几个统计量就是"调 PID 时该看的数"：抖动幅度看 std，振荡看"过均值线"频率。
+        # ⚠ 别用"局部极值（一阶差分乘积 < 0）"来数振荡：本项目 0x10 姿态 20 Hz、0x11 运动也 20 Hz，
+        #   相邻两行常取到**同一个** pitch（重复样点），极值点两侧的差分必然有一个是 0 ⇒ 乘积 = 0 ⇒
+        #   永远数出 0 次（2026-10-16 真机实测：pitch 明显在摆，工具却报"0 次 / 0.0 Hz"）。
+        #   改用经典定义：信号**穿过均值线**的次数 ⇒ 摆动频率 ≈ 过线次数 / 2 / 时长。
+        mu = statistics.fmean(pitch)
+        zc = 0
+        for i in range(1, len(pitch)):
+            a, b = pitch[i - 1] - mu, pitch[i] - mu
+            if a == 0 or b == 0:
+                continue
+            if (a > 0) != (b > 0):
+                zc += 1
         print("姿态统计（用于判断超调/振荡）：")
-        print(f"  pitch  均值 {statistics.fmean(pitch):7.2f}°  "
+        print(f"  pitch  均值 {mu:7.2f}°  "
               f"最小 {min(pitch):7.2f}°  最大 {max(pitch):7.2f}°  "
               f"标准差 {statistics.pstdev(pitch):5.2f}°")
-        print(f"  峰峰值 {max(pitch)-min(pitch):6.2f}°   零穿越 {zc} 次 "
-              f"（≈{zc/dur:.1f} Hz 振荡频率，越大越可能在抖）")
+        print(f"  峰峰值 {max(pitch)-min(pitch):6.2f}°   过均值线 {zc} 次 "
+              f"（≈{zc / 2 / dur:.2f} Hz 摆动频率，越大越可能在抖）")
 
 
 def looks_like_hex_text(text):
@@ -590,6 +629,11 @@ def main():
     ap.add_argument("--save", action="store_true", help="把当前参数存入 Flash")
     ap.add_argument("--load", action="store_true", help="从 Flash 重新载入参数")
     ap.add_argument("--observe", type=float, metavar="SECONDS", help="100 Hz 观测（并统计）")
+    ap.add_argument("--keepalive", action="store_true",
+                    help="观测期间每 200 ms 发 0x1F 心跳：保持在线但**不解锁**（观测停着的车用）")
+    ap.add_argument("--enable", action="store_true",
+                    help="观测期间每 100 ms 发 0x20 使能=1（零速度）：保活**并解除安全锁存**"
+                         "（观测正在平衡/运行的车必须加它，否则 500 ms 后被固件锁存停车）")
     ap.add_argument("--monitor", type=float, nargs="?", const=0, metavar="SECONDS",
                     help="常规监视 0x10/0x11/0x12/0x14")
     ap.add_argument("--estop", action="store_true", help="紧急停机（0x2F）")
@@ -637,7 +681,8 @@ def main():
         cmd_dump(link)
         did = True
     if args.observe:
-        cmd_observe(link, args.observe, args.csv)
+        cmd_observe(link, args.observe, args.csv,
+                    keepalive=("en" if args.enable else ("hb" if args.keepalive else None)))
         did = True
     if args.monitor is not None:
         monitor(link, args.monitor)
