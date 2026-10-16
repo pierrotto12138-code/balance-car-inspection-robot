@@ -176,7 +176,7 @@ QGroupBox *OverviewPanel::buildPowerEnvGroup()
 
 QGroupBox *OverviewPanel::buildTaskGroup()
 {
-    auto *g = new QGroupBox(QStringLiteral("任务与巡检 0x12 · 5 Hz"));
+    auto *g = new QGroupBox(QStringLiteral("任务与巡检 0x12 · 与 0x10/0x11 同频（20 Hz）"));
     auto *grid = new QGridLayout(g);
     grid->setSpacing(6);
 
@@ -284,7 +284,7 @@ QGroupBox *OverviewPanel::buildBitsGroup()
     m_ledBtSeen = new LedIndicator(QStringLiteral("蓝牙收过数据"), g);
     m_ledHeartbeat = new LedIndicator(QStringLiteral("心跳 0x1F"), g);
     m_ledSetPwm = new LedIndicator(QStringLiteral("Set_Pwm 已调用"), g);
-    m_ledNotExec = new LedIndicator(QStringLiteral("算了没执行"), g);
+    m_ledNotExec = new LedIndicator(QStringLiteral("未驱动"), g);
     m_ledTurnDiff = new LedIndicator(QStringLiteral("Turn=0 两轮不同"), g);
     m_ledTiltProt = new LedIndicator(QStringLiteral("倾角保护 >40°"), g);
     m_ledFlagStop = new LedIndicator(QStringLiteral("Flag_Stop"), g);
@@ -447,7 +447,7 @@ void OverviewPanel::refresh()
                               .arg(m.motorOutAvg));
         }
         m_avoid->setText(QStringLiteral("避障位 0b%1").arg(m.avoidFlags, 4, 2, QLatin1Char('0')));
-        m_avoid->setToolTip(QStringLiteral("0x11 的避障状态位。协议未细化位定义 ⇒ 只原样显示，不做语义假设。"));
+        m_avoid->setToolTip(QStringLiteral("0x11 避障状态位；协议未定义位含义 ⇒ 原样显示，不作语义推断。"));
     } else {
         const QString hint = st.received(proto::up::kMotion)
                                  ? QStringLiteral("已过期 %1 ms").arg(st.ageMs(proto::up::kMotion))
@@ -496,12 +496,12 @@ void OverviewPanel::refresh()
         //   **MQ-135 有数、MQ-2 一直是"未就绪 + 0"（空座）**，不要当成故障。
         if (!e.mq2Ready()) {
             m_mq2->setInvalid(QStringLiteral("未就绪"));
-            m_mq2->setToolTip(QStringLiteral("该座未插模块 / 未预热 / 标定未完成 —— "
+            m_mq2->setToolTip(QStringLiteral("该座未插模块 / 未预热 / 未完成标定 —— "
                                              "0 ppm 不代表空气干净（固件对无效样本不计入标定，故不报假 ppm）"));
         }
         if (!e.mq135Ready()) {
             m_mq135->setInvalid(QStringLiteral("未就绪"));
-            m_mq135->setToolTip(QStringLiteral("该座未插模块 / 未预热 / 标定未完成 —— "
+            m_mq135->setToolTip(QStringLiteral("该座未插模块 / 未预热 / 未完成标定 —— "
                                                "0 ppm 不代表空气干净（固件对无效样本不计入标定，故不报假 ppm）"));
         }
         if (!e.dht11Valid()) {
@@ -606,7 +606,7 @@ void OverviewPanel::refresh()
                                                                  : io::LinkState::Closed)));
         stateLbl[i]->setStyleSheet(QStringLiteral("color:%1;")
                                        .arg(QString::fromLatin1(open ? theme::kOk : theme::kOffline)));
-        frameLbl[i]->setText(QStringLiteral("%1 (丢 %2)").arg(stats.framesOk).arg(stats.framesDropped));
+        frameLbl[i]->setText(QStringLiteral("%1 帧（丢 %2）").arg(stats.framesOk).arg(stats.framesDropped));
         byteLbl[i]->setText(QStringLiteral("%1 B").arg(stats.bytesRx));
         const qint64 age = st.linkAgeMs(kind);
         ageLbl[i]->setText(age < 0 ? QStringLiteral("--") : QStringLiteral("%1 ms").arg(age));
@@ -638,14 +638,14 @@ void OverviewPanel::refresh()
     m_counters->setToolTip(QStringLiteral(
         "四项计数（依次）：活动告警 · 格式错帧 · 协议外命令 · 跨链路重复帧（已去重）。\n"
         "前两项应为 0。末项 = 已覆盖的命令字数 / 6（0x10/0x11/0x12/0x14/0x15/0x16）。"));
-    m_sources->setText(QStringLiteral("来源(ms)：%1 %2 %3 %4 %5")
+    m_sources->setText(QStringLiteral("最近帧来源 / 年龄(ms)：%1 %2 %3 %4 %5")
                            .arg(sourceAgeText(proto::up::kPose), sourceAgeText(proto::up::kMotion),
                                 sourceAgeText(proto::up::kTask), sourceAgeText(proto::up::kEnvGas),
                                 sourceAgeText(proto::up::kDiag)));
     // 两条链路都会发周期帧（协议 §七 约定 6），这里显示的是**最后一次有效值**的来源；
     // 把这句话放进 tooltip，避免"为什么全是蓝牙"这种疑问没法当场回答。
     m_sources->setToolTip(QStringLiteral("两条链路都会周期性上报同样的帧（协议 §七 约定 6）。\n"
-                                         "这里显示的是最后一次**有效值**来自哪条链路、距今多久；\n"
+                                         "此处显示最后一次有效值来自哪条链路、距今多久；\n"
                                          "下面链路表的\"解帧/最近帧\"才是各链路自己的统计。"));
 
     // ---- ⑧ 状态位 ----
@@ -688,7 +688,7 @@ void OverviewPanel::refresh()
                                  ? LedIndicator::Level::Warn
                                  : LedIndicator::Level::Off,
                            exec == domain::LoopData::Execution::Mismatch
-                               ? QStringLiteral("算了没执行（未停车却 CCR=0）")
+                               ? QStringLiteral("未驱动（未停车但 CCR=0）")
                            : exec == domain::LoopData::Execution::Protected
                                ? QStringLiteral("保护中，未驱动（Flag_Stop/锁存）")
                                : QString());
@@ -699,7 +699,7 @@ void OverviewPanel::refresh()
     m_ledTurnDiff->setLevel(loopOk && l.differentialWithoutTurn() ? LedIndicator::Level::Warn
                                                                  : LedIndicator::Level::Off,
                             loopOk && l.differentialWithoutTurn()
-                                ? QStringLiteral("Turn=0 而两轮命令不同。**先核对固件极性开关**"
+                                ? QStringLiteral("Turn=0 而两轮命令不同。先核对固件极性开关"
                                                  "（CFG_MOTOR_*_INVERT）再判断是否为差速 bug")
                                 : QString());
     // 倾角保护：现场把车手动倾过去也会触发 ⇒ **不是故障**，用琥珀而不是红。

@@ -63,8 +63,8 @@ void CurvePanel::buildUi()
     m_mq2Limit->setRange(1.0, 6000.0);
     m_mq2Limit->setDecimals(1);
     m_mq2Limit->setSuffix(QStringLiteral(" ppm"));
-    m_mq2Limit->setToolTip(QStringLiteral("与固件 0x23 巡检参数的默认值一致（30 ppm）。\n"
-                                          "改这里只改上位机的判定，**下发到板子要等 P4 的 0x23 面板**。"));
+    m_mq2Limit->setToolTip(QStringLiteral("与固件 0x23 巡检参数默认值一致（30 ppm）。\n"
+                                          "此处仅修改上位机判定；下发到机器人需用 0x23 面板。"));
     bar->addWidget(m_mq2Limit);
     bar->addWidget(new QLabel(QStringLiteral("MQ-135 阈值")));
     m_mq135Limit = new QDoubleSpinBox(this);
@@ -88,7 +88,7 @@ void CurvePanel::buildUi()
     bar->addWidget(m_windowBox);
 
     m_autoYBox = new QCheckBox(QStringLiteral("Y 自动量程"), this);
-    m_autoYBox->setToolTip(QStringLiteral("ISA-101 建议固定量程（靠位置读值）；\n"
+    m_autoYBox->setToolTip(QStringLiteral("ISA-101 建议固定量程（按位置读数）；\n"
                                           "只有看趋势时才打开自动量程。"));
     bar->addWidget(m_autoYBox);
     m_endValueBox = new QCheckBox(QStringLiteral("曲线末端标数值"), this);
@@ -96,11 +96,11 @@ void CurvePanel::buildUi()
     bar->addWidget(m_endValueBox);
 
     m_resetView = new QPushButton(QStringLiteral("撤销缩放"), this);
-    m_resetView->setToolTip(QStringLiteral("回到默认视图（也可以直接双击图内任意位置）"));
+    m_resetView->setToolTip(QStringLiteral("恢复默认视图（也可双击图内任意位置）"));
     bar->addWidget(m_resetView);
     m_pauseBtn = new QPushButton(QStringLiteral("暂停更新"), this);
     m_pauseBtn->setCheckable(true);
-    m_pauseBtn->setToolTip(QStringLiteral("冻结画面读波形（暂停期间不再采样，恢复后继续）"));
+    m_pauseBtn->setToolTip(QStringLiteral("冻结画面读数（暂停期间停止采样，恢复后继续）"));
     bar->addWidget(m_pauseBtn);
     bar->addStretch(1);
     root->addLayout(bar);

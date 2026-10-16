@@ -109,7 +109,7 @@ void PatrolPanel::buildUi()
 
     // ---------------- 任务状态 ----------------
     {
-        auto *g = new QGroupBox(QStringLiteral("任务状态 0x12 · 5 Hz"), this);
+        auto *g = new QGroupBox(QStringLiteral("任务状态 0x12 · 与 0x10/0x11 同频（20 Hz）"), this);
         auto *grid = new QGridLayout(g);
         grid->setSpacing(6);
         m_task = new ValueCard(QStringLiteral("任务"), QString(), 0, g);
@@ -165,7 +165,7 @@ void PatrolPanel::buildUi()
         m_btnEstop->setStyleSheet(QStringLiteral("color:%1; font-weight:bold;")
                                       .arg(QString::fromLatin1(theme::kAlarm)));
         m_btnRelease = new QPushButton(QStringLiteral("重下任务解除锁存"), g);
-        m_btnRelease->setToolTip(QStringLiteral("协议 v1.1：收到 0x21 任务=自主巡航（或 0x20 使能位=1）"
+        m_btnRelease->setToolTip(QStringLiteral("协议 v1.1：0x21 任务=自主巡航可解除全部锁存；0x20 使能位=1 仅解除失联锁存"
                                                 "即解除安全锁存。\n"
                                                 "锁存期间硬件按键也解不开，所以这是唯一的解除路径。"));
         grid->addWidget(m_btnPatrol, 0, 0);
@@ -194,11 +194,11 @@ void PatrolPanel::buildUi()
         m_kaInterval->setRange(50, 2000);
         m_kaInterval->setSingleStep(50);
         m_kaInterval->setSuffix(QStringLiteral(" ms"));
-        m_kaInterval->setToolTip(QStringLiteral("必须明显小于固件的 500 ms 判据（默认 200 ms 留 2.5 倍余量）"));
+        m_kaInterval->setToolTip(QStringLiteral("必须小于固件 500 ms 判据（默认 200 ms，留 2.5 倍余量）"));
         m_kaMode = new QComboBox(g);
         m_kaMode->addItem(QStringLiteral("心跳 0x1F（安全，不解除锁存）"),
                           int(domain::KeepaliveMode::Heartbeat));
-        m_kaMode->addItem(QStringLiteral("使能 0x20（会解除锁存！）"),
+        m_kaMode->addItem(QStringLiteral("使能 0x20（将解除失联锁存）"),
                           int(domain::KeepaliveMode::EnableZeroSpeed));
         m_kaState = new QLabel(g);
         m_kaState->setFont(theme::monoFont(9));
@@ -246,7 +246,7 @@ void PatrolPanel::buildUi()
     // "重下任务解除锁存" = 0x21 任务=自主巡航（协议 v1.1 的解除路径）
     connect(m_btnRelease, &QPushButton::clicked, this, [this]() {
         sendTask(proto::TaskId::Patrol);
-        m_hint->setText(QStringLiteral("已重下任务（0x21 自主巡航）—— 若锁存已解除，横幅会变回正常；"
+        m_hint->setText(QStringLiteral("已重下任务（0x21 自主巡航）—— 锁存解除后横幅恢复为正常；"
                                        "若仍在锁存，检查下行链路（保活是否开启 / 端口是否通）"));
     });
 
@@ -327,7 +327,7 @@ void PatrolPanel::sendTask(proto::TaskId id)
     // ★ 0x21 可能解除安全锁存 —— 所以按钮上的文案与这里的留档都把后果写清楚
     send(proto::down::kTask, domain::cmd::taskPayload(id), detail);
     m_hint->setText(QStringLiteral("已下发 %1。注意：收到显式使能（0x21 巡航 / 0x20 使能位=1）"
-                                   "会**解除**安全锁存，这是协议规定的解除路径。")
+                                   "将解除安全锁存，这是协议规定的解除路径。")
                         .arg(detail));
 }
 
@@ -354,7 +354,7 @@ void PatrolPanel::stopMotion()
 void PatrolPanel::sendMotion(int linMmS, int angDpsX10)
 {
     if (m_state->safetyLatched()) {
-        m_hint->setText(QStringLiteral("已锁存：按协议 §3.6 **禁止起步** —— 请先「重下任务解除锁存」"));
+        m_hint->setText(QStringLiteral("已锁存：协议 §3.6 规定锁存期间禁止起步 —— 请先「重下任务解除锁存」"));
         return;
     }
     const bool enable = (linMmS != 0 || angDpsX10 != 0);
@@ -375,7 +375,7 @@ void PatrolPanel::sendEstop()
 {
     // 急停不做二次确认：它就是"来不及解释了"的那个按钮
     send(proto::down::kEstop, domain::cmd::estopPayload(), QStringLiteral("立即切断电机输出并锁存"));
-    m_hint->setText(QStringLiteral("已发急停（0x2F）。锁存后**硬件按键也解不开**，"
+    m_hint->setText(QStringLiteral("已发急停（0x2F）。锁存后硬件按键亦无法解除，"
                                    "需用「重下任务解除锁存」；锁存期间方向键与巡航/返航已禁用。"));
 }
 
@@ -488,7 +488,7 @@ void PatrolPanel::updateKeepaliveUi()
                                                           : risky        ? theme::kAlarm
                                                                          : theme::kText)));
     m_kaWarn->setText(risky
-                          ? QStringLiteral("⚠ 当前用「使能 0x20」保活：协议规定收到使能位=1 即**解除安全锁存**，"
+                          ? QStringLiteral("⚠ 当前用「使能 0x20」保活：协议规定收到使能位=1 即解除失联锁存，"
                                            "等于每 %1 ms 自动绕过一次急停保护。除非确实要保持使能，"
                                            "否则请改回心跳。")
                                 .arg(m_keepalive->intervalMs())
@@ -512,7 +512,7 @@ void PatrolPanel::refresh()
 
     // ---- 安全横幅（与总览页同一套判定，只是这里更大、更直白）----
     if (latched) {
-        m_banner->setText(QStringLiteral("⛔ 已安全锁存 —— 车不会动，需「重下任务解除锁存」"
+        m_banner->setText(QStringLiteral("⛔ 已安全锁存 —— 机器人不会动作，需「重下任务解除锁存」"
                                          "（硬件按键也解不开）"));
         m_banner->setStyleSheet(QStringLiteral("color:%1; border:1px solid %1; border-radius:6px;"
                                                "padding:6px 10px; background:%2; font-weight:bold;")
@@ -525,7 +525,7 @@ void PatrolPanel::refresh()
                                     .arg(QString::fromLatin1(theme::kWarn),
                                          QString::fromLatin1(theme::kPanel)));
     } else if (st.alarmActive()) {
-        m_banner->setText(QStringLiteral("⚠ 固件异常标志：%1（上位机自身的阈值判定未报警 —— "
+        m_banner->setText(QStringLiteral("⚠ 固件异常标志：%1（上位机阈值判定未报警 —— "
                                          "两者不一致本身就是线索：看阈值/传感器就绪位）")
                               .arg(domain::faultFlagsText(st.task().faultFlags)));
         m_banner->setStyleSheet(QStringLiteral("color:%1; border:1px solid %1; border-radius:6px;"

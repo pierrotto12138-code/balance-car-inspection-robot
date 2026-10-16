@@ -441,8 +441,8 @@ void MainWindow::refreshStatusBar()
         m_stFw->setStyleSheet(QStringLiteral("color:%1;")
                                   .arg(QString::fromLatin1(fresh ? theme::kOk : theme::kWarn)));
         m_stFw->setToolTip(
-            QStringLiteral("0x16 偏移 19 = (月<<4)|日；其状态位 bit3 = **固件特性位**。\n"
-                           "未置位 ⇒ 板上是**旧构建**（缺 10-15 晚的改动：左右倾角上报 /\n"
+            QStringLiteral("0x16 偏移 19 = (月<<4)|日；其状态位 bit3 = 固件特性位。\n"
+                           "未置位 ⇒ 板上为旧构建（缺 10-15 晚的改动：左右倾角上报 /\n"
                            "转向环启用 / 前进档 150 / MQ-135 角色指派）⇒ 请重烧 "
                            "firmware/build/MiniBalance.hex。"));
     } else {
@@ -493,7 +493,7 @@ void MainWindow::refreshStatusBar()
             QStringLiteral("固件规定：500 ms 没收到任何下行帧 ⇒ 安全停车并锁存（硬件按键也解不开）。\n"
                            "所以上位机要周期发合法下行帧。\n"
                            "★ 默认用心跳 0x1F：只声明在线，不使能电机、不解除锁存。\n"
-                           "★ 使能 0x20 保活会**周期性解除安全锁存**，等于绕过急停保护（仅在确需保持使能时用）。"));
+                           "★ 使能 0x20 保活会周期性解除安全锁存，等于绕过急停保护（仅在确需保持使能时用）。"));
     }
 }
 

@@ -22,6 +22,10 @@
 
 #include <QStandardPaths>
 
+#ifdef _WIN32
+#include <windows.h>   // SetConsoleOutputCP：让控制台按 UTF-8 解释本程序的中文输出
+#endif
+
 // ============================================================================
 //  程序入口：只做"装配"这一件事
 //    LinkManager（io）→ VehicleState / AlarmEngine（domain）→ EventLog（data）→ MainWindow（ui）
@@ -167,7 +171,7 @@ int runSelfTest(double seconds, double rate)
         << QStringLiteral("  方式：%1 · 周期 %2 ms · 已发 %3 条 · 最近一条 %4 ms 前\n")
                .arg(keepalive.mode() == domain::KeepaliveMode::Heartbeat
                         ? QStringLiteral("心跳 0x1F（不解除锁存）")
-                        : QStringLiteral("使能 0x20（会解除锁存！）"))
+                        : QStringLiteral("使能 0x20（将解除失联锁存）"))
                .arg(keepalive.intervalMs())
                .arg(keepalive.sentCount())
                .arg(keepalive.sinceLastSendMs() < 0 ? QStringLiteral("--")
@@ -214,7 +218,7 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
                 .arg(domain::units::number(p.pitchDeg, 2), domain::units::number(p.rollDeg, 2),
                      domain::units::number(p.yawDeg, 2), srcText(proto::up::kPose)));
     } else {
-        add(QStringLiteral("  姿态：**无数据**（0x10 没到 —— 见上面链路统计）"));
+        add(QStringLiteral("  姿态：无数据（0x10 未上报 —— 见上方链路统计）"));
     }
 
     if (st.received(proto::up::kMotion)) {
@@ -228,7 +232,7 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
                 .arg(domain::units::number(domain::units::cmFromMm(m.distanceMm), 1))
                 .arg(m.avoidFlags, 2, 16, QLatin1Char('0')));
     } else {
-        add(QStringLiteral("  运动：**无数据**"));
+        add(QStringLiteral("  运动：无数据"));
     }
 
     if (st.batteryValid()) {
@@ -238,7 +242,7 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
                                      : QStringLiteral("正常，报警线 11.10 V"),
                      st.safetySummary()));
     } else {
-        add(QStringLiteral("  电源：**无数据**（只有 0x15 诊断帧带电压）  安全：%1")
+        add(QStringLiteral("  电源：无数据（仅 0x15 诊断帧携带电压）  安全：%1")
                 .arg(st.safetySummary()));
     }
 
@@ -251,7 +255,7 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
                 .arg(t.checkpoint)
                 .arg(domain::faultFlagsText(t.faultFlags)));
     } else {
-        add(QStringLiteral("  任务：**无数据**"));
+        add(QStringLiteral("  任务：无数据"));
     }
 
     if (st.received(proto::up::kEnvGas)) {
@@ -264,15 +268,15 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
                 .arg(e.mq135Raw)
                 .arg(domain::units::number(e.tempC, 1), domain::units::number(e.humidityPct, 1),
                      QString::fromUtf8(domain::sampleGearName(e.gear))));
-        add(QStringLiteral("    （★ 原始 ADC 是判断“传感器有没有响应”的铁证：ppm 是换算来的，"
-                           "原始值不动就说明那一路根本没在测 —— 与 OLED 第 2/3 行同源）"));
+        add(QStringLiteral("    （★ 原始 ADC 是判断传感器是否响应的直接证据：ppm 由换算得到，"
+                           "原始值不变即该路未在测量 —— 与 OLED 第 2/3 行同源）"));
         add(QStringLiteral("  就绪：MQ-2 %1 · MQ-135 %2 · DHT11 %3 · 补偿 %4")
                 .arg(e.mq2Ready() ? QStringLiteral("✔") : QStringLiteral("✘"),
                      e.mq135Ready() ? QStringLiteral("✔") : QStringLiteral("✘"),
                      e.dht11Valid() ? QStringLiteral("✔") : QStringLiteral("✘"),
                      e.compensationOn() ? QStringLiteral("✔") : QStringLiteral("✘")));
     } else {
-        add(QStringLiteral("  环境：**无数据**"));
+        add(QStringLiteral("  环境：无数据"));
     }
 
     if (st.received(proto::up::kDiag)) {
@@ -282,7 +286,7 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
                      QString::fromUtf8(domain::diagPageName(st.diag().page)))
                 .arg(st.diag().flagShow ? QStringLiteral("1") : QStringLiteral("0")));
     } else {
-        add(QStringLiteral("  诊断：**无数据**"));
+        add(QStringLiteral("  诊断：无数据"));
     }
 
     if (st.received(proto::up::kLoop)) {
@@ -298,7 +302,7 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
                 .arg(l.ccrB)
                 .arg(domain::firmwareVersionText(l.fwVersion)));
     } else {
-        add(QStringLiteral("  三环：**无数据**（0x16 未上报）"));
+        add(QStringLiteral("  三环：无数据（0x16 未上报）"));
     }
 
     add(QStringLiteral("  链路：有线 帧 %1 · 最近 %2 ｜ 蓝牙 帧 %3 · 最近 %4")
@@ -386,12 +390,12 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
                .arg(seconds, 0, 'f', 1)
                .arg(heartbeat || readback
                         ? QStringLiteral("（每 200 ms 发 0x1F 心跳，车不会因失联停车）")
-                        : QStringLiteral("（**不发任何下行帧** —— 固件 500 ms 后会安全停车）"))
-               .arg(readback ? QStringLiteral("；先发一条 0x24 全量回读(0xFF)：**只读命令**，"
+                        : QStringLiteral("（不发任何下行帧：固件 500 ms 后将安全停车）"))
+               .arg(readback ? QStringLiteral("；先发一条 0x24 全量回读(0xFF)：只读命令，"
                                               "不写参数、不动 Flash")
                              : QString());
     if (!heartbeat && !readback) {
-        out << QStringLiteral("提示：若车正在跑，请改用 --probe-heartbeat，避免把它“探”停。\n");
+        out << QStringLiteral("提示：若机器人正在运行，请改用 --probe-heartbeat，避免因失联触发安全停车。\n");
     }
     out.flush();
 
@@ -445,7 +449,7 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
         << QLatin1Char('\n');
     out << QStringLiteral("关闭链路耗时：%1 ms%2\n")
                .arg(closeCost)
-               .arg(closeCost > 500 ? QStringLiteral("（偏大！关闭串口不应阻塞这么久）") : QString())
+               .arg(closeCost > 500 ? QStringLiteral("（偏大：关闭串口不应阻塞这么久）") : QString())
         << QStringLiteral("链路：收 %1 B / 发 %2 B · 解帧 %3 · 丢帧 %4\n")
                .arg(s.bytesRx)
                .arg(s.bytesTx)
@@ -513,16 +517,16 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
                        .arg(l.ccrA)
                        .arg(ratio, 0, 'f', 3)
                        .arg(l.executionState() == domain::LoopData::Execution::Mismatch
-                                ? QStringLiteral("⚠ 算了没执行（未停车却 CCR=0）")
+                                ? QStringLiteral("⚠ 未驱动（未停车但 CCR=0）")
                             : l.executionState() == domain::LoopData::Execution::Protected
                                 ? QStringLiteral("保护中，未驱动（Flag_Stop/锁存 ⇒ 正常）")
                                 : QStringLiteral("✔ 已执行"))
-                << QStringLiteral("  编码器本拍增量：左 %1 / 右 %2（★ 手推前进时应**同号**；"
+                << QStringLiteral("  编码器本拍增量：左 %1 / 右 %2（★ 手推前进时应同号；"
                                   "静止时都≈0，此判据需在推车时看）\n")
                        .arg(l.encLeft)
                        .arg(l.encRight)
                 << QStringLiteral("  状态位：bit0 Flag_Stop=%1 · bit1 电机被禁=%2 · bit2 本拍调 Set_pwm=%3"
-                                  " · **bit3 新特性=%4**（0 = 板上是旧构建，请重烧！）\n")
+                                  " · bit3 新特性=%4（0 = 板上为旧构建，需重烧）\n")
                        .arg(l.flagStop() ? 1 : 0)
                        .arg(l.motorDisabled() ? 1 : 0)
                        .arg(l.setPwmCalled() ? 1 : 0)
@@ -534,7 +538,7 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
                 out << QStringLiteral("  倾角 %1° − Zhongzhi %2° ⇒ %3\n")
                            .arg(domain::units::number(state.pose().pitchDeg, 2))
                            .arg(domain::units::number(zz, 2))
-                           .arg(tilt ? QStringLiteral("⚠ 超 ±40°，固件会关电机（现场常见，非故障）")
+                           .arg(tilt ? QStringLiteral("⚠ 超 ±40°，固件将关闭电机（现场常见，非故障）")
                                      : QStringLiteral("✔ 在保护范围外"));
             }
         }
@@ -550,8 +554,15 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
 
 int main(int argc, char *argv[])
 {
+#ifdef _WIN32
+    // 控制台输出统一为 UTF-8：程序打印的是 UTF-8，而中文 Windows 控制台默认代码页 936(GBK)，
+    // 不切就会把 --help / --selftest / --probe 的中文显示成乱码（终端里手动 chcp 65001 可临时绕开）。
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("仓储环境安全巡检机器人 · 上位机"));
+    app.setApplicationVersion(QStringLiteral("1.6（2026-10-16）"));
     app.setOrganizationName(QStringLiteral("MCS-2026-Group1"));
 
     // 暗色主题：QSS 变量全部来自 ui/theme/theme.h（颜色只表达异常，见该文件头说明）
@@ -563,23 +574,24 @@ int main(int argc, char *argv[])
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("仓储环境安全巡检机器人 · 上位机"));
     parser.addHelpOption();
+    parser.addVersionOption();   // 有了它 --version 才存在（下面 isSet("version") 才不会报未定义）
     QCommandLineOption selftest(QStringLiteral("selftest"),
-                                QStringLiteral("无界面自检：假源跑 N 秒后打印链路统计与状态聚合，"
-                                               "退出码 0 = 正常"),
+                                QStringLiteral("无界面自检：假源运行 N 秒，打印链路统计与状态聚合；"
+                                               "退出码 0 = 通过"),
                                 QStringLiteral("秒"), QStringLiteral("3"));
     parser.addOption(selftest);
     // 演示模式：两条链路都切假源并自动连接 —— 板子没到 / 演示现场硬件故障时用
     QCommandLineOption demo(QStringLiteral("demo"),
-                            QStringLiteral("演示模式：两条链路用假源并自动连接（打开就有数据在跑）"));
+                            QStringLiteral("演示模式：两条链路均用假源并自动连接（启动即有数据）"));
     parser.addOption(demo);
     // 自动截图：把界面渲染成 PNG 后退出 —— 文档里的截图用它生成，
     // 免得"手工截图 → 界面改一点 → 图全过期"（配合 --demo 可在无板子时出图）
     QCommandLineOption shot(QStringLiteral("shot"),
-                            QStringLiteral("把界面渲染为 PNG 后退出（配合 --demo 出文档截图）"),
+                            QStringLiteral("把界面渲染为 PNG 后退出（配合 --demo 生成文档截图）"),
                             QStringLiteral("路径"));
     parser.addOption(shot);
     QCommandLineOption shotDelay(QStringLiteral("shot-delay"),
-                                 QStringLiteral("截图前等待的毫秒数（让假源先攒一点数据）"),
+                                 QStringLiteral("截图前等待的毫秒数（等待假源累积数据）"),
                                  QStringLiteral("毫秒"), QStringLiteral("2500"));
     parser.addOption(shotDelay);
     QCommandLineOption shotTab(QStringLiteral("shot-tab"),
@@ -588,34 +600,34 @@ int main(int argc, char *argv[])
                                QStringLiteral("页号"), QStringLiteral("0"));
     parser.addOption(shotTab);
     QCommandLineOption sizeOpt(QStringLiteral("size"),
-                               QStringLiteral("强制窗口尺寸 WxH（★ 小屏验证用：默认按屏幕自适应；"
-                                              "例如 --size 1366x768 复现笔记本屏）"),
+                               QStringLiteral("强制窗口尺寸 WxH（用于小屏验证；默认按屏幕自适应。"
+                                              "例：--size 1366x768）"),
                                QStringLiteral("WxH"));
     parser.addOption(sizeOpt);
     // 假源速率倍数：×5 时约 12 s 就能看到完整的安全剧本（气体冲高→急停锁存→解除→低压）
     QCommandLineOption rate(QStringLiteral("rate"),
-                            QStringLiteral("假源速率倍数（1.0 = 按协议真实周期；5 = 五倍速演示）"),
+                            QStringLiteral("假源速率倍数（1.0 = 协议真实周期；5.0 = 五倍速）"),
                             QStringLiteral("倍数"), QStringLiteral("1.0"));
     parser.addOption(rate);
     // 记录与回放（P4）：记录让"现场发生的事"可复盘；回放让"没有硬件也能演示"
     QCommandLineOption record(QStringLiteral("record"),
-                              QStringLiteral("启动即开始录制（CSV 逐帧 + 会话入库）"),
+                              QStringLiteral("启动即开始录制（逐帧 CSV + 会话入库）"),
                               QStringLiteral("CSV路径"));
     parser.addOption(record);
     QCommandLineOption play(QStringLiteral("play"),
-                            QStringLiteral("用记录文件回放驱动界面（走假源链路，同一套数据通路）"),
+                            QStringLiteral("用记录文件回放驱动界面（经假源链路，数据通路与真机一致）"),
                             QStringLiteral("CSV路径"));
     parser.addOption(play);
     QCommandLineOption dbPath(QStringLiteral("db"),
-                              QStringLiteral("会话库(SQLite)路径；默认放在 QStandardPaths 的 "
-                                             "AppDataLocation。★ 打包/便携用法：指到 U 盘或记录目录，"
-                                             "所有会话与参数快照跟着数据一起走"),
+                              QStringLiteral("会话库(SQLite)路径；默认位于 QStandardPaths 的 "
+                                             "AppDataLocation。便携用法：指向 U 盘或记录目录，"
+                                             "会话与参数快照随数据一同迁移"),
                               QStringLiteral("db路径"));
     parser.addOption(dbPath);
     // 真机只读探测（不需要界面，用来在联调第一现场把"链路/命令覆盖/状态"一次打全）
     QCommandLineOption probe(QStringLiteral("probe"),
                              QStringLiteral("真机只读探测：打开指定串口，打印链路统计、各命令字"
-                                            "收到条数与状态聚合后退出"),
+                                            "接收条数与状态聚合后退出"),
                              QStringLiteral("端口"));
     parser.addOption(probe);
     QCommandLineOption probeBaud(QStringLiteral("probe-baud"), QStringLiteral("探测波特率"),
@@ -625,14 +637,35 @@ int main(int argc, char *argv[])
                                     QStringLiteral("秒"), QStringLiteral("5"));
     parser.addOption(probeSeconds);
     QCommandLineOption probeHb(QStringLiteral("probe-heartbeat"),
-                               QStringLiteral("探测期间每 200 ms 发 0x1F 心跳（车不会因失联停车）"));
+                               QStringLiteral("探测期间每 200 ms 发 0x1F 心跳（避免机器人因失联安全停车）"));
     parser.addOption(probeHb);
     QCommandLineOption probeReadback(
         QStringLiteral("probe-readback"),
         QStringLiteral("探测时发一条 0x24 全量回读(0xFF) 并把 7 个实际生效值与定义表逐项对照"
-                       "（**只读命令**，不写参数、不动 Flash；会自动开启心跳）"));
+                       "（只读命令：不写参数、不写 Flash；自动开启心跳）"));
     parser.addOption(probeReadback);
-    parser.process(app);
+    // ★ 不用 parser.process()：它自己调 showHelp() 时会走**本地 8 位编码（中文 Windows = GBK）**，
+    //   与本程序其它输出（统一 UTF-8，见文件头的控制台代码页设置）不一致 ⇒ 重定向到文件或
+    //   控制台代码页变化时，帮助文本会乱码。这里自己以 UTF-8 打印帮助。
+    if (!parser.parse(app.arguments())) {
+        QTextStream err(stderr);
+        err.setEncoding(QStringConverter::Utf8);
+        err << parser.errorText() << Qt::endl;
+        return 2;
+    }
+    if (parser.isSet(QStringLiteral("help")) || parser.isSet(QStringLiteral("help-all"))) {
+        QTextStream out(stdout);
+        out.setEncoding(QStringConverter::Utf8);
+        out << parser.helpText() << Qt::endl;
+        return 0;
+    }
+    if (parser.isSet(QStringLiteral("version"))) {
+        QTextStream out(stdout);
+        out.setEncoding(QStringConverter::Utf8);
+        out << QCoreApplication::applicationName() << QStringLiteral("　v")
+            << QCoreApplication::applicationVersion() << Qt::endl;
+        return 0;
+    }
 
     if (parser.isSet(selftest)) {
         return runSelfTest(parser.value(selftest).toDouble(), parser.value(rate).toDouble());

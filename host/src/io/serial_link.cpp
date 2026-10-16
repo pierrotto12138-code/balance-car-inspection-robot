@@ -322,7 +322,7 @@ void SerialLink::stopReader()
     m_thread->quit();
     if (!m_thread->wait(2000)) {
         // 极端情况（驱动卡死）：不强杀线程，仅放弃引用，避免崩溃 —— 但要让它在日志里可见
-        qWarning("SerialLink: 读取线程 2 s 内未退出（驱动可能卡死），放弃引用；串口资源可能未释放");
+        qWarning("SerialLink: 读取线程 2 s 内未退出，放弃引用（驱动可能卡死；串口资源可能未释放）");
         m_thread->setParent(nullptr);
         m_thread = nullptr;
         m_reader = nullptr;

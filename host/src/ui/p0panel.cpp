@@ -102,7 +102,7 @@ P0Panel::P0Panel(io::LinkManager *mgr, QWidget *parent) : QWidget(parent), m_mgr
     m_rate->setRange(0.1, 100.0);
     m_rate->setSingleStep(0.5);
     m_rate->setValue(1.0);
-    m_rate->setToolTip(QStringLiteral("1.0 = 按协议真实周期；10.0 用于压测界面是否卡顿"));
+    m_rate->setToolTip(QStringLiteral("1.0 = 协议真实周期；10.0 = 界面压力测试"));
     cl->addWidget(m_rate);
 
     cl->addWidget(new QLabel(QStringLiteral("坏帧比例"), ctrl));
@@ -111,7 +111,7 @@ P0Panel::P0Panel(io::LinkManager *mgr, QWidget *parent) : QWidget(parent), m_mgr
     m_corrupt->setSingleStep(0.05);
     m_corrupt->setDecimals(2);
     m_corrupt->setValue(0.0);
-    m_corrupt->setToolTip(QStringLiteral("故意破坏 CRC 的比例，用来验证\"丢帧计数\"确实在工作"));
+    m_corrupt->setToolTip(QStringLiteral("人为置错 CRC 的比例，用于验证丢帧计数"));
     cl->addWidget(m_corrupt);
 
     m_resetCounters = new QPushButton(QStringLiteral("重置计数"), ctrl);
@@ -126,7 +126,7 @@ P0Panel::P0Panel(io::LinkManager *mgr, QWidget *parent) : QWidget(parent), m_mgr
     root->addWidget(ctrl);
 
     // ---------------- 报文日志（HEX 流水）----------------
-    auto *logBox = new QGroupBox(QStringLiteral("报文日志（收 / 发 十六进制流水）"), this);
+    auto *logBox = new QGroupBox(QStringLiteral("报文日志（收 / 发 十六进制）"), this);
     auto *ll = new QVBoxLayout(logBox);
     m_log = new QPlainTextEdit(logBox);
     m_log->setReadOnly(true);

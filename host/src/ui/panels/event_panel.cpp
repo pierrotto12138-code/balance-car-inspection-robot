@@ -25,7 +25,7 @@ EventPanel::EventPanel(data::EventLog *log, QWidget *parent) : QWidget(parent), 
     bar->setSpacing(10);
     m_onlySafety = new QCheckBox(QStringLiteral("只看安全事件"), this);
     m_onlyProblems = new QCheckBox(QStringLiteral("只看告警/故障"), this);
-    m_autoScroll = new QCheckBox(QStringLiteral("自动滚到最新"), this);
+    m_autoScroll = new QCheckBox(QStringLiteral("自动滚动到最新"), this);
     m_autoScroll->setChecked(true);
     m_clear = new QPushButton(QStringLiteral("清空"), this);
     bar->addWidget(m_onlySafety);

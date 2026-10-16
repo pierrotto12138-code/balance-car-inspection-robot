@@ -5,7 +5,7 @@
 
 > **状态：P0~P5 全部完成（C 部分收工）**（2026-10-15）—— `protocol/` + `io/` + `domain/`（units/frames/vehicle_state/alarm/commands/keepalive）+ `data/`（event_log/param_store/recorder）+ 七个界面页
 > （总览 / 巡检与控制 / 曲线与告警 / 调参与记录 / 事件流 / 通信链路 / 协议自检）+ **一键打包**（`package.ps1` → 便携目录 **12 文件 / 37.4 MB**，免装 Qt）。
-> `ctest` **7/7 通过**（协议 13 + 链路 8 + domain 15 + 界面 11 + 告警 13 + 命令/保活 13 + **记录/回放/参数 13**）；`host.exe --selftest 3 -platform offscreen` 退出码 **0**。
+> `ctest` **7/7 通过**（协议 13 + 链路 9 + domain 15 + 界面 12 + 告警 14 + 命令/保活 15 + **记录/回放/参数 14** = **92 项用例**，2026-10-16 实测）；`host.exe --selftest 3 -platform offscreen` 退出码 **0**。
 > **没有板子也能开发/演示**：假源内置剧本（每 30 s 气体冲高、每 60 s 急停锁存→解除、50~56 s 低压），
 > `--demo --rate 5` 约 12 s 就能把"报警 → 曲线留痕 → 事件流留档 → 锁存 → 重下任务解除"整套演完；`--play 记录.csv` 可用录制数据驱动整个界面。
 > **有板子时**：`--probe COM3 --probe-readback` 一条命令把"链路 / 各命令字条数 / 状态聚合 / **0x24 七个实际生效值逐项对照** / 0x16 判读"一次打全（**只读**，见 §二之三）。
@@ -59,7 +59,9 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
 # 构建
 cmake --build build
 
-# 跑单元测试（7 个目标：协议 13 + 链路 9 + domain 15 + 界面 12 + 告警 14 + 命令/保活 15 + 记录/回放/参数 14 = **92 项 QTest 用例**，含各套件的 init/cleanupTestCase；2026-10-16 实测）
+# ⚠ 先把 Qt 的 bin 放到 PATH 最前：本机 PATH 里的 STM32CubeProgrammer\bin 带一个旧 Qt6Core.dll，
+#   不放最前会让测试进程加载到它并报「无法定位程序输入点」（退出码 0xC0000139）——不是代码问题。
+# 跑单元测试（7 个目标：协议 13 + 链路 9 + domain 15 + 界面 12 + 告警 14 + 命令/保活 15 + 记录/回放/参数 14 = **92 项 QTest 用例**；2026-10-16 实测）
 ctest --test-dir build --output-on-failure
 
 # 无界面自检：两条链路都切假源，跑 3 s 打印**链路统计 + 状态聚合 + 告警与事件流 + 保活**并退出（0 = 正常）
@@ -193,7 +195,7 @@ src/protocol/
 
 **P1 的验收步骤**（命令都写在 §二之三）：
 
-1. `ctest --test-dir build --output-on-failure` → **4/4**；
+1. `ctest --test-dir build --output-on-failure` → **7/7**（92 项用例；P1 阶段为 4/4，后续套件陆续加入）；
 2. `host.exe --selftest 3 -platform offscreen` → 退出码 **0**，并打印出完整的**状态聚合**；
 3. `host.exe --demo` → 打开就能看到假源数据在跑（含每 30 s 气体冲高、每 60 s 急停锁存→解除、50~56 s 低压窗口）；
 4. 有板子时：`host.exe --probe COM3 --probe-seconds 10 --probe-heartbeat` → 解帧在涨、格式错帧 0、各命令字都有条数；

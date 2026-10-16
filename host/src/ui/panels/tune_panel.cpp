@@ -130,7 +130,7 @@ void TunePanel::buildUi()
 
         m_observe = new QCheckBox(
             QStringLiteral("观测模式 (0xFD)：有线链路以 100 Hz 上报 0x10+0x11（PID 整定用；"
-                           "**临时状态，整定完请关掉**）"),
+                           "临时状态，整定完成后请关闭）"),
             g);
         m_observeHint = new QLabel(g);
         m_observeHint->setProperty("role", "sub");
@@ -219,7 +219,7 @@ void TunePanel::buildUi()
         m_compensation->setChecked(cfg.compensation);
         m_confirmFrames->setValue(cfg.confirmFrames);
         m_surveyHint->setText(QStringLiteral("默认值来自协议 §4.1（1000 ms / 30 / 50 ppm / 连续 3 帧）。"
-                                             "0x23 **掉电不保存**，重启回固件里的上电值。"));
+                                             "0x23 掉电不保存，重启后为固件中的上电值。"));
 
         connect(btnSendSurvey, &QPushButton::clicked, this, &TunePanel::sendSurveyCfg);
     }
@@ -338,7 +338,7 @@ void TunePanel::updateSelectedRow()
     const int r = m_table->currentRow();
     if (r < 0) {
         m_selectedName->setText(QStringLiteral("（未选中）"));
-        m_rangeHint->setText(QStringLiteral("选中一行参数后，在上面的输入框里改值再点「下发该参数」。"));
+        m_rangeHint->setText(QStringLiteral("先选中一行参数，再修改数值并点「下发该参数」。"));
         m_btnSend->setEnabled(false);
         return;
     }
@@ -466,7 +466,7 @@ void TunePanel::sendSurveyCfg()
                                     .arg(cfg.compensation ? 1 : 0),
                                 ok);
     }
-    m_surveyHint->setText(QStringLiteral("已下发并记账（0x23 掉电不保存，重启回上电值；"
+    m_surveyHint->setText(QStringLiteral("已下发并记账（0x23 掉电不保存，重启后为上电值；"
                                          "要长期生效请在固件默认值里改）。"));
 }
 
@@ -563,7 +563,7 @@ void TunePanel::refresh()
         // "算了没执行"分级：未使能/锁存时 CCR=0 是**保护生效**（现场"没使能电机"就长这样）
         const domain::LoopData::Execution exec = l.executionState();
         parts << (exec == domain::LoopData::Execution::Mismatch
-                      ? QStringLiteral("⚠ 算了没执行（未停车却 CCR=0）")
+                      ? QStringLiteral("⚠ 未驱动（未停车但 CCR=0）")
                   : exec == domain::LoopData::Execution::Protected
                       ? QStringLiteral("保护中，未驱动（正常）")
                       : QStringLiteral("✔ CCR 与 Moto 一致"));
