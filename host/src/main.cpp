@@ -254,10 +254,16 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
 
     if (st.received(proto::up::kEnvGas)) {
         const auto &e = st.env();
-        add(QStringLiteral("  环境：MQ-2 %1 ppm / MQ-135 %2 ppm / %3 ℃ / %4 %RH · 档位 %5")
-                .arg(domain::units::number(e.mq2Ppm, 1), domain::units::number(e.mq135Ppm, 1),
-                     domain::units::number(e.tempC, 1), domain::units::number(e.humidityPct, 1),
+        add(QStringLiteral("  环境：MQ-2 %1 ppm（ADC 原始值 %2）/ MQ-135 %3 ppm（原始值 %4）"
+                           "/ %5 ℃ / %6 %RH · 档位 %7")
+                .arg(domain::units::number(e.mq2Ppm, 1))
+                .arg(e.mq2Raw)
+                .arg(domain::units::number(e.mq135Ppm, 1))
+                .arg(e.mq135Raw)
+                .arg(domain::units::number(e.tempC, 1), domain::units::number(e.humidityPct, 1),
                      QString::fromUtf8(domain::sampleGearName(e.gear))));
+        add(QStringLiteral("    （★ 原始 ADC 是判断“传感器有没有响应”的铁证：ppm 是换算来的，"
+                           "原始值不动就说明那一路根本没在测 —— 与 OLED 第 2/3 行同源）"));
         add(QStringLiteral("  就绪：MQ-2 %1 · MQ-135 %2 · DHT11 %3 · 补偿 %4")
                 .arg(e.mq2Ready() ? QStringLiteral("✔") : QStringLiteral("✘"),
                      e.mq135Ready() ? QStringLiteral("✔") : QStringLiteral("✘"),
