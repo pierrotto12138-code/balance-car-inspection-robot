@@ -495,12 +495,12 @@ void OverviewPanel::refresh()
         //   固件已把 **MQ-135 角色指派给 J13**（`sensor_adc.h`）⇒ 正常现象是
         //   **MQ-135 有数、MQ-2 一直是"未就绪 + 0"（空座）**，不要当成故障。
         if (!e.mq2Ready()) {
-            m_mq2->setInvalid(QStringLiteral("MQ-2 未就绪（未插/未预热）"));
+            m_mq2->setInvalid(QStringLiteral("未就绪"));
             m_mq2->setToolTip(QStringLiteral("该座未插模块 / 未预热 / 标定未完成 —— "
                                              "0 ppm 不代表空气干净（固件对无效样本不计入标定，故不报假 ppm）"));
         }
         if (!e.mq135Ready()) {
-            m_mq135->setInvalid(QStringLiteral("MQ-135 未就绪（未插/未预热）"));
+            m_mq135->setInvalid(QStringLiteral("未就绪"));
             m_mq135->setToolTip(QStringLiteral("该座未插模块 / 未预热 / 标定未完成 —— "
                                                "0 ppm 不代表空气干净（固件对无效样本不计入标定，故不报假 ppm）"));
         }
@@ -618,7 +618,7 @@ void OverviewPanel::refresh()
                            ? QStringLiteral("主链路：无")
                            : QStringLiteral("主链路：%1").arg(linkCn(primary)));
     m_primary->setToolTip(QStringLiteral("判定规则：有线优先（协议 §七 约定 6）。"));
-    m_counters->setText(QStringLiteral("告警 %1 · 错帧 %2 · 外命令 %3 · 重复 %4 · 命令 %5")
+    m_counters->setText(QStringLiteral("%1·%2·%3·%4 | %5")
                             .arg(m_alarm != nullptr ? m_alarm->activeCount() : 0)
                             .arg(st.malformedFrames())
                             .arg(st.unknownFrames())
@@ -626,7 +626,7 @@ void OverviewPanel::refresh()
                             .arg(st.received(proto::up::kPose) && st.received(proto::up::kMotion) &&
                                          st.received(proto::up::kTask) && st.received(proto::up::kEnvGas) &&
                                          st.received(proto::up::kDiag) && st.received(proto::up::kLoop)
-                                     ? QStringLiteral("6/6 ✔")
+                                     ? QStringLiteral("6/6")
                                      : QStringLiteral("%1/6")
                                            .arg(int(st.received(proto::up::kPose)) +
                                                 int(st.received(proto::up::kMotion)) +
@@ -634,9 +634,10 @@ void OverviewPanel::refresh()
                                                 int(st.received(proto::up::kEnvGas)) +
                                                 int(st.received(proto::up::kDiag)) +
                                                 int(st.received(proto::up::kLoop)))));
+    // ★ 用户反馈"这些字很占地方" ⇒ 界面上只留数字，含义全部搬进 tooltip。
     m_counters->setToolTip(QStringLiteral(
-        "活动告警项数 · 格式错帧（长度/CRC 不符）· 协议外命令字 · 跨链路重复帧（已去重）·\n"
-        "已收到的命令字覆盖面（0x10/0x11/0x12/0x14/0x15/0x16 共 6 个，前两项应为 0）"));
+        "四项计数（依次）：活动告警 · 格式错帧 · 协议外命令 · 跨链路重复帧（已去重）。\n"
+        "前两项应为 0。末项 = 已覆盖的命令字数 / 6（0x10/0x11/0x12/0x14/0x15/0x16）。"));
     m_sources->setText(QStringLiteral("来源(ms)：%1 %2 %3 %4 %5")
                            .arg(sourceAgeText(proto::up::kPose), sourceAgeText(proto::up::kMotion),
                                 sourceAgeText(proto::up::kTask), sourceAgeText(proto::up::kEnvGas),

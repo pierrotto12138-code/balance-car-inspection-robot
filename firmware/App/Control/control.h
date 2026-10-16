@@ -9,6 +9,9 @@
 
 #define DIFFERENCE 100
 extern	int Balance_Pwm,Velocity_Pwm,Turn_Pwm;
+/* ★ 2026-10-15：左右倾角/角速度（0x10 的 roll / gy；定义在 control.c）。
+   `Angle_LR` 是**仅加速度计的静态倾角**（未做陀螺仪融合）—— 界面/文档要写明"静态"。*/
+extern	float Angle_LR, Gyro_LR;
 int EXTI15_10_IRQHandler(void);
 int balance(float angle,float gyro);
 int velocity(int encoder_left,int encoder_right);

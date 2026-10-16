@@ -285,7 +285,7 @@ QByteArray ReplayLink::makeDiag(quint32 tMs)
     proto::putU16(d, static_cast<uint16_t>(v * 100)); // 0 电池电压 0.01 V（★ 只有这一帧带电压）
     d.push_back(0x02);                                // 2 当前显示页 = 巡检通信页
     d.push_back(0x00);                                // 3 Flag_Show（0 = 屏幕归我们）
-    d.push_back(0x01);                                // 4 姿态算法 = 四元数
+    d.push_back(0x02);                                // 4 姿态算法 = 卡尔曼（与真机 Way_Angle=2 一致）
 
     uint8_t bits = 0x04; // bit2 DHT11 有效
     if (inSpike(t)) {
@@ -332,7 +332,9 @@ QByteArray ReplayLink::makeLoop(quint32 tMs)
     proto::putU16(d, static_cast<uint16_t>(a2 > 7200 ? 7200 : a2));
     proto::putI16(d, static_cast<int16_t>(std::sin(t / 900.0) * 120.0)); // 编码器原始计数
     proto::putI16(d, static_cast<int16_t>(std::sin(t / 950.0) * 120.0));
-    uint8_t bits = 0x04; // bit2：本拍真的调用了 Set_Pwm
+    // ★ bit3 = 固件特性位（2026-10-15）：假源也要置上，否则 demo 里状态条会显示
+    //   "⚠旧构建"，与真机（已烧新固件）不一致 —— 假源应模拟**当前**固件的行为。
+    uint8_t bits = 0x04 | 0x08; // bit2：本拍真的调用了 Set_Pwm；bit3：新特性
     if (inEstopLatch(static_cast<quint64>(tMs))) {
         bits |= 0x01 | 0x02; // Flag_Stop | App_MotorDisable
     }

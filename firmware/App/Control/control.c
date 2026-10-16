@@ -32,6 +32,18 @@ int Balance_Pwm,Velocity_Pwm,Turn_Pwm;
 u8 Flag_Target;
 u32 Flash_R_Count;
 int Voltage_Temp,Voltage_Count,Voltage_All;
+/* ★★ 2026-10-15：**左右倾角 / 左右角速度**（0x10 姿态帧的 roll / gy 字段用）。
+ *
+ * 为什么不能取 DMP 的 `Pitch`：本机 `Way_Angle = 2`（卡尔曼，见 main.c:8），
+ * 而 `Get_Angle()` 里 **只有 `way==1` 才会调用 `Read_DMP()`** ⇒ DMP 输出的
+ * `Pitch / Roll / gyro[] / accel[]` **从不更新、恒为 0**（真机实测"横滚恒 0.00"正是此因）。
+ * 所以这里按厂商"用加速度计算静态倾角"的同款做法，直接读**加速度计 X 轴**：
+ *     Angle_LR = atan2(Accel_X, Accel_Z)      （与厂商用 Y/Z 算平衡角正交、同构）
+ * 并用**陀螺仪 Y 轴**给出左右角速度。
+ * ⚠ 口径：`Angle_LR` 是**仅加速度计的静态倾角**（未做陀螺仪融合）
+ *   ⇒ 车体运动/振动时噪声较大，界面与文档都必须写明"静态"。 */
+float Angle_LR = 0.0f;
+float Gyro_LR  = 0.0f;
 
 #ifdef USE_FREERTOS
 /* ★ B（固件）2026-10-09（决策 47）：安全停车"真正落到电机"的那一环。
@@ -401,6 +413,7 @@ u8 Turn_Off(float angle, int voltage)
 void Get_Angle(u8 way)
 {
 		float Accel_Y,Accel_Angle,Accel_Z,Gyro_X,Gyro_Z;
+		float Accel_X,Gyro_Y;                 /* ★ 2026-10-15：左右倾角/角速度用（见文件顶部说明）*/
 			Temperature=Read_Temperature();      //===读取MPU6050内置温度传感器数据，近似表示主板温度。
 		if(way==1)                           //===DMP的读取在数据采集中断读取，严格遵循时序要求
 			{
@@ -420,6 +433,16 @@ void Get_Angle(u8 way)
 			if(Gyro_Z>32768)  Gyro_Z-=65536;                       //数据类型转换
 			if(Accel_Y>32768) Accel_Y-=65536;                      //数据类型转换
 			if(Accel_Z>32768) Accel_Z-=65536;                      //数据类型转换
+			/* ★ 2026-10-15：左右倾角/角速度（0x10 的 roll / gy）。
+			   用加速度计 X 轴算**静态**左右倾角（与上面用 Y/Z 算平衡角同构、正交），
+			   用陀螺仪 Y 轴给左右角速度。之所以不取 DMP 的 Pitch：Way_Angle=2 时
+			   `Read_DMP()` 从不执行 ⇒ DMP 输出恒为 0（真机实测横滚恒 0.00 即此因）。*/
+			Gyro_Y=(I2C_ReadOneByte(devAddr,MPU6050_RA_GYRO_YOUT_H)<<8)+I2C_ReadOneByte(devAddr,MPU6050_RA_GYRO_YOUT_L);
+			Accel_X=(I2C_ReadOneByte(devAddr,MPU6050_RA_ACCEL_XOUT_H)<<8)+I2C_ReadOneByte(devAddr,MPU6050_RA_ACCEL_XOUT_L);
+			if(Gyro_Y>32768)  Gyro_Y-=65536;                       //数据类型转换
+			if(Accel_X>32768) Accel_X-=65536;                      //数据类型转换
+			Gyro_LR=Gyro_Y;                                        //左右角速度（陀螺仪 Y 轴原始量）
+			Angle_LR=atan2(Accel_X,Accel_Z)*180/PI;                //左右倾角（仅加速度计，静态）
 			Gyro_Balance=Gyro_X;                                  //更新平衡角速度
 			Accel_Angle=atan2(Accel_Y,Accel_Z)*180/PI;                 //计算倾角
 			Gyro_X=Gyro_X/16.4f;                                    //陀螺仪量程转换
