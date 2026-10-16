@@ -14,6 +14,14 @@ QString styleSheet()
 QMainWindow, QDialog { background: %1; }
 QWidget { color: %4; }
 QStackedWidget, QScrollArea { background: %1; }
+/* ★ 2026-10-15 修"背景变白、浅字看不清"：把每页套进 QScrollArea 之后，
+   滚动区里的页面与它的 viewport 都是**裸 QWidget** —— 之前 QSS 只给
+   QStackedWidget/QScrollArea 定了底色，于是**原生 Windows 样式**下这些裸 QWidget
+   去用系统调色板（浅色主题 ⇒ 白底），而文字仍是我设的浅灰 ⇒ 看不见。
+   这里把三条都显式定色：滚动区本身、它的 viewport、以及 viewport 里的页面容器。*/
+QScrollArea { border: none; }
+QScrollArea > QWidget#qt_scrollarea_viewport { background: %1; }
+QWidget#dshPage { background: %1; }
 
 /* ---- 分组框（每个信息区一个）---- */
 QGroupBox {

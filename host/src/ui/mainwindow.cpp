@@ -104,6 +104,10 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain
                           static_cast<QWidget *>(m_curves), static_cast<QWidget *>(m_tune),
                           static_cast<QWidget *>(m_events), static_cast<QWidget *>(m_p0),
                           buildSelfTestPage()}) {
+        // ★ objectName 让 QSS 能精确给"滚动区里的页面"定底色（见 theme.cpp 的 dshPage 规则）：
+        //   裸 QWidget 在原生样式下会拿系统调色板 ⇒ 浅色主题下变白底、浅字看不清。
+        page->setObjectName(QStringLiteral("dshPage"));
+        page->setAutoFillBackground(false);
         auto *sa = new QScrollArea(m_stack);
         sa->setWidgetResizable(true);   // 内容随视口自适应宽度（横向不强制出滚动条）
         sa->setFrameShape(QFrame::NoFrame);
