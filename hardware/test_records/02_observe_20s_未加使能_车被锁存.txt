@@ -1,0 +1,46 @@
+已连接 COM3 @ 115200（有线链路，协议同蓝牙）
+进入调参观测模式（有线链路 100 Hz）…
+  t= 0.52s pitch= -79.07° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 1.04s pitch= -79.06° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 1.56s pitch= -79.05° gyro=  -37.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 2.08s pitch= -79.06° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 2.61s pitch= -79.08° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 3.13s pitch= -79.08° gyro=  -37.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 3.66s pitch= -79.09° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 4.18s pitch= -79.09° gyro=  -40.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 4.71s pitch= -79.11° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 5.23s pitch= -79.07° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 5.76s pitch= -79.08° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 6.29s pitch= -79.08° gyro=  -37.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 6.82s pitch= -79.11° gyro=  -37.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 7.34s pitch= -79.11° gyro=  -40.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 7.87s pitch= -79.08° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 8.39s pitch= -79.09° gyro=  -36.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 8.91s pitch= -79.08° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 9.45s pitch= -79.09° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t= 9.98s pitch= -79.08° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=10.51s pitch= -79.09° gyro=  -37.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=11.04s pitch= -79.10° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=11.56s pitch= -79.09° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=12.09s pitch= -79.07° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=12.61s pitch= -79.07° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=13.14s pitch= -79.09° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=13.67s pitch= -79.09° gyro=  -37.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=14.20s pitch= -79.05° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=14.73s pitch= -79.07° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=15.25s pitch= -79.08° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=15.79s pitch= -79.08° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=16.31s pitch= -79.04° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=16.84s pitch= -79.06° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=17.37s pitch= -79.08° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=17.90s pitch= -79.09° gyro=  -36.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=18.41s pitch= -79.09° gyro=  -39.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=18.94s pitch= -79.09° gyro=  -38.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=19.46s pitch= -79.08° gyro=  -37.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+  t=20.01s pitch= -79.10° gyro=  -37.00 spdL=    0 spdR=    0 pwm=-8200 d=   0cm
+已退出调参观测模式
+
+采集 1560 帧 / 20.21s ≈ 77.2 Hz，已写 hardware\test_records\02_observe_20s.csv
+姿态统计（用于判断超调/振荡）：
+  pitch  均值  -79.08°  最小  -79.12°  最大  -79.03°  标准差  0.02°
+  峰峰值   0.09°   零穿越 0 次 （≈0.0 Hz 振荡频率，越大越可能在抖）

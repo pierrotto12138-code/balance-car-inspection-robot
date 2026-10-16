@@ -27,3 +27,21 @@ Makefile text eol=lf
 *.json   text eol=lf
 *.tsv    text eol=lf
 *.csv    text eol=lf
+
+# ★ 归档的"原始记录 / 制造数据"一律**不做任何行尾转换**，保证与工具输出、EDA 导出件逐字节一致
+#   （本项目的规矩：结论必须可回溯到原始记录，原始记录本身不能被 git 悄悄改掉）
+#   注意：这些规则必须放在上面 `* text=auto eol=lf` 与按扩展名的规则**之后**才会生效
+hardware/test_records/*.txt   -text
+hardware/test_records/*.csv   -text
+hardware/eda_export_20261016/*.dxf   -text
+hardware/eda_export_20261016/*.tel   -text
+hardware/eda_export_20261016/*.356a  -text
+hardware/eda_export_20261016/*.txt   -text
+hardware/eda_export_20261016/*.html  -text
+hardware/eda_export_20261016/*.svg   -text
+hardware/eda_export_20261016/*.step  -text
+hardware/eda_export_20261016/*.tgz   -text
+hardware/eda_export_20261016/*.epro2 -text
+hardware/eda_export_20261016/*.xlsx  -text
+hardware/gerber/*.zip  -text
+

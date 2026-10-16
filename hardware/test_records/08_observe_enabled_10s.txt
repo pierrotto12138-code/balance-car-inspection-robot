@@ -1,0 +1,26 @@
+已连接 COM3 @ 115200（有线链路，协议同蓝牙）
+进入调参观测模式（有线链路 100 Hz）—— 每 100 ms 发 0x20 使能=1（保活+解锁，零速度）…
+  t= 0.53s pitch=   0.32° gyro= -109.00 spdL=    0 spdR=    0 pwm=  180 d=   0cm
+  t= 1.06s pitch=   1.52° gyro=  -67.00 spdL=    0 spdR=   13 pwm= -354 d=   0cm
+  t= 1.59s pitch=   0.88° gyro=  -52.00 spdL=   26 spdR=   40 pwm= -490 d=   0cm
+  t= 2.12s pitch=   1.40° gyro=   15.00 spdL=    0 spdR=    0 pwm= -407 d=   0cm
+  t= 2.65s pitch=   1.47° gyro=   -6.00 spdL=    0 spdR=    0 pwm= -414 d=   0cm
+  t= 3.20s pitch=  -0.57° gyro=  -40.00 spdL=    0 spdR=  -26 pwm=  352 d=   0cm
+  t= 3.73s pitch=  -0.23° gyro=  -66.00 spdL=    0 spdR=    0 pwm=  192 d=   0cm
+  t= 4.26s pitch=   0.18° gyro=  -39.00 spdL=    0 spdR=    0 pwm=   89 d=   0cm
+  t= 4.79s pitch=  -0.33° gyro=  -34.00 spdL=    0 spdR=    0 pwm=  210 d=   0cm
+  t= 5.32s pitch=  -0.35° gyro=  -48.00 spdL=    0 spdR=    0 pwm=  229 d=   0cm
+  t= 5.84s pitch=  -0.15° gyro=   -7.00 spdL=    0 spdR=    0 pwm=  163 d=   0cm
+  t= 6.37s pitch=  -0.65° gyro=  -86.00 spdL=    0 spdR=    0 pwm=  362 d=   0cm
+  t= 6.91s pitch=  -0.64° gyro=  -52.00 spdL=    0 spdR=    0 pwm=  338 d=   0cm
+  t= 7.44s pitch=  -0.62° gyro=  -47.00 spdL=    0 spdR=    0 pwm=  333 d=   0cm
+  t= 7.97s pitch=  -0.14° gyro=   -3.00 spdL=    0 spdR=    0 pwm=  156 d=   0cm
+  t= 8.51s pitch=   0.72° gyro=   14.00 spdL=    0 spdR=    0 pwm= -147 d=   0cm
+  t= 9.05s pitch=   0.63° gyro=  -54.00 spdL=    0 spdR=    0 pwm=  -56 d=   0cm
+  t= 9.58s pitch=  -0.42° gyro=   38.00 spdL=    0 spdR=  -26 pwm=  333 d=   0cm
+已退出调参观测模式
+
+采集 784 帧 / 10.26s ≈ 76.4 Hz，已写 hardware\test_records\08_observe_enabled_10s.csv
+姿态统计（用于判断超调/振荡）：
+  pitch  均值    0.14°  最小   -1.88°  最大    2.39°  标准差  0.87°
+  峰峰值   4.27°   零穿越 0 次 （≈0.0 Hz 振荡频率，越大越可能在抖）

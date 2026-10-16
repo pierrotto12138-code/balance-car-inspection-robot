@@ -59,7 +59,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug \
 # 构建
 cmake --build build
 
-# 跑单元测试（7 个目标：协议 13 + 链路 8 + domain 15 + 界面 11 + 告警 13 + 命令/保活 13 + 记录/回放/参数 13）
+# 跑单元测试（7 个目标：协议 13 + 链路 9 + domain 15 + 界面 12 + 告警 14 + 命令/保活 15 + 记录/回放/参数 14 = **92 项 QTest 用例**，含各套件的 init/cleanupTestCase；2026-10-16 实测）
 ctest --test-dir build --output-on-failure
 
 # 无界面自检：两条链路都切假源，跑 3 s 打印**链路统计 + 状态聚合 + 告警与事件流 + 保活**并退出（0 = 正常）
@@ -81,7 +81,7 @@ ctest --test-dir build --output-on-failure
 ./build/test_domain.exe         # 期望：15 passed（含冻结向量逐字段比对、跨链路去重）
 ./build/test_alarm.exe          # 期望：13 passed（连续确认/迟滞/事件流配对）
 ./build/test_command.exe        # 期望：13 passed（下行帧往返、钳位、保活行为）
-./build/test_data.exe           # 期望：12 passed（CSV/回放/SQLite/参数账本）
+./build/test_data.exe           # 期望：14 passed（CSV/回放/SQLite/参数账本；含 init/cleanupTestCase）
 ./build/test_ui.exe -platform offscreen   # 期望：11 passed（界面冒烟，不需要显示器）
 
 # 跑上位机（有板子：在界面里选端口点连接；没有板子：用假源）
@@ -337,7 +337,7 @@ QML/Network/SVG、多余 SQL 驱动、图片格式插件 —— 纯 QWidgets 程
 | 事件日志面板 | 告警滚动列表 + `0x08/0x09/0x0A` 成对显示 + **操作员动作留档** | ✅ P2/P3 |
 | 巡检与远程控制 | 阶段时间轴、任务下发/急停/解除锁存、保活、按住走松手停 | ✅ P3 |
 | 调参与记录 | `0x24` 在线调参（含全量回读/Flash/观测模式）、`0x23` 参数下发、CSV/SQLite 落盘、回放 | ✅ P4 |
-| 打包与文档 | `windeployqt` 便携目录 + 软件设计说明 + 用户操作手册 | ⬜ P5 |
+| 打包与文档 | `windeployqt` 便携目录 + 软件设计说明 + 用户操作手册 | ✅ P5 |
 
 **实时曲线实现要点**（已按此实现，见 `ui/widgets/scope_plot.h` 头注释）：
 采样**每帧一次**（接 `VehicleState::dataUpdated`），重绘**10 Hz 定时器**；
@@ -349,7 +349,7 @@ QML/Network/SVG、多余 SQL 驱动、图片格式插件 —— 纯 QWidgets 程
 - [x] 可执行程序（含依赖打包说明）→ P5：`package.ps1` → `dist/上位机/`（12 文件 / 37.4 MB，免装 Qt）
 - [x] 软件设计说明文档 → [`../docs/design_host/软件设计说明.md`](../docs/design_host/软件设计说明.md)
 - [x] 用户操作手册 → [`../docs/design_host/用户操作手册.md`](../docs/design_host/用户操作手册.md)
-- [x] 演示脚本与界面截图 → [`../docs/design_host/演示脚本.md`](../docs/design_host/演示脚本.md) + `../docs/design_host/P0~P4_*.png`（6 张）
+- [x] 演示脚本与界面截图 → [`../docs/design_host/演示脚本.md`](../docs/design_host/演示脚本.md) + [`../docs/design_host/图/`](../docs/design_host/图/)（`P0_通信链路面板` / `P1_总览面板` / `P2_曲线与告警` / `P2_事件流` / `P3_巡检与控制` / `P4_调参与记录`，共 **6 张**，均被用户操作手册引用）
 
 ## 六、变更记录
 

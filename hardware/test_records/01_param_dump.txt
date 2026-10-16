@@ -1,0 +1,9 @@
+已连接 COM3 @ 115200（有线链路，协议同蓝牙）
+当前 PID 参数（实际生效值）：
+  0x01 Balance_Kp   = 300
+  0x02 Balance_Kd   = 1
+  0x03 Velocity_Kp  = 80
+  0x04 Velocity_Ki  = 0.4
+  0x05 Zhongzhi     = 0.5
+  0x06 Turn_Kp      = 52
+  0x07 Turn_Kd      = 0.5
