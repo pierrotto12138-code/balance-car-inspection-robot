@@ -30,6 +30,14 @@ typedef struct
 	float    angle;        /* 平衡倾角（°，厂商 Angle_Balance）*/
 	float    gyro;         /* 平衡角速度（厂商 Gyro_Balance）*/
 	float    gyroTurn;     /* 转向角速度（厂商 Gyro_Turn）*/
+	/* ★ 2026-10-15 新增：**左右倾角与左右角速度**（0x10 姿态帧的 roll / gy 用）。
+	   轴向依据（推理有硬证据，不是猜）：车靠 `Angle_Balance = -Roll` 保持平衡，
+	   而两轮车**不可能**靠"左右倒"保持平衡 ⇒ 四元数的 Roll 必是**前后倾**，
+	   正交的 **Pitch 即左右倾**；角速度同理：前后 = `-gyro[0]`、偏航 = `gyro[2]`
+	   ⇒ 左右 = **`gyro[1]`**。若真机实测左右倾没反应，改 app_config.h 的
+	   `CFG_IMU_LR_FROM_PITCH` 即可（一行恢复，不用改别的）。*/
+	float    tiltLR;       /* 左右倾角（°）*/
+	float    gyroLR;       /* 左右倾角速度（°/s）*/
 	int32_t  encLeft;      /* 左编码器计数（10 ms 周期增量）*/
 	int32_t  encRight;     /* 右编码器计数 */
 	int32_t  pwmLeft;      /* 左电机 PWM（含符号）*/

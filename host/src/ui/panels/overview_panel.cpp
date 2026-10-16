@@ -324,6 +324,18 @@ QString OverviewPanel::sourceText(quint8 cmd) const
     return QStringLiteral("%1 · %2").arg(linkCn(m_state->sourceOf(cmd)), ageText);
 }
 
+QString OverviewPanel::sourceAgeText(quint8 cmd) const
+{
+    // 只回"多久之前"（数字 + 单位），用于把"数据来源"那一行压缩到一行放得下；
+    // 具体是哪条链路看下面的链路表（每页状态条也写着）。
+    const qint64 age = m_state->ageMs(cmd);
+    if (age < 0) {
+        return QStringLiteral("--");
+    }
+    return (age < 1000) ? QString::number(age)
+                        : QStringLiteral("%1s").arg(domain::units::number(age / 1000.0, 0));
+}
+
 bool OverviewPanel::fresh(quint8 cmd, qint64 staleMs) const
 {
     const qint64 age = m_state->ageMs(cmd);
@@ -390,6 +402,11 @@ void OverviewPanel::refresh()
         for (ValueCard *c : {m_pitch, m_roll, m_yaw, m_gyroX, m_gyroY, m_gyroZ}) {
             c->setSub(src);
         }
+        // ★ 偏航角特殊说明：厂商 DMP 只算了 Pitch/Roll，**固件没有计算偏航** ⇒ 该字段恒 0。
+        //   如实标注，免得让人以为"车真的一直没转过"（若将来固件补上，这里会自动恢复显示来源）。
+        if (p.yawDeg == 0.0) {
+            m_yaw->setSub(QStringLiteral("固件未计算偏航（该字段恒 0）"));
+        }
     } else if (st.received(proto::up::kPose)) {
         // 收到过但已过期：**置灰 + 明说"已过期"**，否则冻住的画面会被当成"车停住了"
         const QString hint = QStringLiteral("已过期 %1 ms").arg(st.ageMs(proto::up::kPose));
@@ -429,8 +446,8 @@ void OverviewPanel::refresh()
                               .arg(src)
                               .arg(m.motorOutAvg));
         }
-        m_avoid->setText(QStringLiteral("避障状态位：0b%1（协议未细化位定义，此处只原样显示）")
-                             .arg(m.avoidFlags, 4, 2, QLatin1Char('0')));
+        m_avoid->setText(QStringLiteral("避障位 0b%1").arg(m.avoidFlags, 4, 2, QLatin1Char('0')));
+        m_avoid->setToolTip(QStringLiteral("0x11 的避障状态位。协议未细化位定义 ⇒ 只原样显示，不做语义假设。"));
     } else {
         const QString hint = st.received(proto::up::kMotion)
                                  ? QStringLiteral("已过期 %1 ms").arg(st.ageMs(proto::up::kMotion))
@@ -478,12 +495,14 @@ void OverviewPanel::refresh()
         //   固件已把 **MQ-135 角色指派给 J13**（`sensor_adc.h`）⇒ 正常现象是
         //   **MQ-135 有数、MQ-2 一直是"未就绪 + 0"（空座）**，不要当成故障。
         if (!e.mq2Ready()) {
-            m_mq2->setInvalid(QStringLiteral("MQ-2 未就绪（该座未插模块／未预热／未标定）"
-                                             "—— 0 ppm 不代表空气干净"));
+            m_mq2->setInvalid(QStringLiteral("MQ-2 未就绪（未插/未预热）"));
+            m_mq2->setToolTip(QStringLiteral("该座未插模块 / 未预热 / 标定未完成 —— "
+                                             "0 ppm 不代表空气干净（固件对无效样本不计入标定，故不报假 ppm）"));
         }
         if (!e.mq135Ready()) {
-            m_mq135->setInvalid(QStringLiteral("MQ-135 未就绪（该座未插模块／未预热／未标定）"
-                                               "—— 0 ppm 不代表空气干净"));
+            m_mq135->setInvalid(QStringLiteral("MQ-135 未就绪（未插/未预热）"));
+            m_mq135->setToolTip(QStringLiteral("该座未插模块 / 未预热 / 标定未完成 —— "
+                                               "0 ppm 不代表空气干净（固件对无效样本不计入标定，故不报假 ppm）"));
         }
         if (!e.dht11Valid()) {
             m_temp->setInvalid(QStringLiteral("DHT11 无效"));
@@ -593,26 +612,35 @@ void OverviewPanel::refresh()
         ageLbl[i]->setText(age < 0 ? QStringLiteral("--") : QStringLiteral("%1 ms").arg(age));
     }
     const io::LinkKind primary = m_mgr->primaryLink();
+    // ★ 文案精简（用户反馈"这些字很占地方"）：细节移到 tooltip，界面上只留结论 ——
+    //   一行放得下 ⇒ 1366×768 全屏不必再拉滚动条。
     m_primary->setText(primary == io::LinkKind::Count
-                           ? QStringLiteral("主链路：无（两条都未连接）")
-                           : QStringLiteral("主链路：%1（有线优先，协议 §七 约定 6）").arg(linkCn(primary)));
-    m_counters->setText(QStringLiteral("本机统计：活动告警 %1 项 · 格式错帧 %2 · 协议外命令 %3 · "
-                                       "重复帧 %4（两条链路都发，已去重） · "
-                                       "已收到命令 0x10/0x11/0x12/0x14/0x15/0x16 = %5/%6/%7/%8/%9/%10")
+                           ? QStringLiteral("主链路：无")
+                           : QStringLiteral("主链路：%1").arg(linkCn(primary)));
+    m_primary->setToolTip(QStringLiteral("判定规则：有线优先（协议 §七 约定 6）。"));
+    m_counters->setText(QStringLiteral("告警 %1 · 错帧 %2 · 外命令 %3 · 重复 %4 · 命令 %5")
                             .arg(m_alarm != nullptr ? m_alarm->activeCount() : 0)
                             .arg(st.malformedFrames())
                             .arg(st.unknownFrames())
                             .arg(st.duplicateFrames())
-                            .arg(st.received(proto::up::kPose) ? QStringLiteral("有") : QStringLiteral("无"),
-                                 st.received(proto::up::kMotion) ? QStringLiteral("有") : QStringLiteral("无"),
-                                 st.received(proto::up::kTask) ? QStringLiteral("有") : QStringLiteral("无"),
-                                 st.received(proto::up::kEnvGas) ? QStringLiteral("有") : QStringLiteral("无"),
-                                 st.received(proto::up::kDiag) ? QStringLiteral("有") : QStringLiteral("无"),
-                                 st.received(proto::up::kLoop) ? QStringLiteral("有") : QStringLiteral("无")));
-    m_sources->setText(QStringLiteral("数据来源：姿态 %1 ｜ 运动 %2 ｜ 任务 %3 ｜ 环境 %4 ｜ 诊断 %5")
-                           .arg(sourceText(proto::up::kPose), sourceText(proto::up::kMotion),
-                                sourceText(proto::up::kTask), sourceText(proto::up::kEnvGas),
-                                sourceText(proto::up::kDiag)));
+                            .arg(st.received(proto::up::kPose) && st.received(proto::up::kMotion) &&
+                                         st.received(proto::up::kTask) && st.received(proto::up::kEnvGas) &&
+                                         st.received(proto::up::kDiag) && st.received(proto::up::kLoop)
+                                     ? QStringLiteral("6/6 ✔")
+                                     : QStringLiteral("%1/6")
+                                           .arg(int(st.received(proto::up::kPose)) +
+                                                int(st.received(proto::up::kMotion)) +
+                                                int(st.received(proto::up::kTask)) +
+                                                int(st.received(proto::up::kEnvGas)) +
+                                                int(st.received(proto::up::kDiag)) +
+                                                int(st.received(proto::up::kLoop)))));
+    m_counters->setToolTip(QStringLiteral(
+        "活动告警项数 · 格式错帧（长度/CRC 不符）· 协议外命令字 · 跨链路重复帧（已去重）·\n"
+        "已收到的命令字覆盖面（0x10/0x11/0x12/0x14/0x15/0x16 共 6 个，前两项应为 0）"));
+    m_sources->setText(QStringLiteral("来源(ms)：%1 %2 %3 %4 %5")
+                           .arg(sourceAgeText(proto::up::kPose), sourceAgeText(proto::up::kMotion),
+                                sourceAgeText(proto::up::kTask), sourceAgeText(proto::up::kEnvGas),
+                                sourceAgeText(proto::up::kDiag)));
     // 两条链路都会发周期帧（协议 §七 约定 6），这里显示的是**最后一次有效值**的来源；
     // 把这句话放进 tooltip，避免"为什么全是蓝牙"这种疑问没法当场回答。
     m_sources->setToolTip(QStringLiteral("两条链路都会周期性上报同样的帧（协议 §七 约定 6）。\n"

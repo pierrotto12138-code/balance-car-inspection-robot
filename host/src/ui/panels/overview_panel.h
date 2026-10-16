@@ -71,6 +71,8 @@ private:
     void setBanner(domain::Severity s, const QString &text);
     /// 某命令字的"来源 + 新鲜度"文本（两条链路都会发周期帧，来源必须能看见）
     QString sourceText(quint8 cmd) const;
+    /// 只回"多久之前"（数字；ms，≥1 s 记作 1s/2s）—— 用于把"来源"那一行压成一行放得下
+    QString sourceAgeText(quint8 cmd) const;
     /// 数据是否新鲜（否则置灰 —— 冻住的画面比没有画面更危险）
     bool fresh(quint8 cmd, qint64 staleMs) const;
 

@@ -3,6 +3,12 @@
 #include "sys.h"
 #include "motor.h"      /* PWMA/PWMB：TIM1 的 CCR 宏（真实输出）*/
 #include "control.h"    /* Balance_Pwm / Velocity_Pwm / Turn_Pwm 的 extern 声明 */
+/* ★ 2026-10-15：必须包含 app_config.h —— 本文件用了 `#if CFG_IMU_LR_FROM_PITCH`，
+   宏不可见时 `#if` 会**静默取 0**（于是悄悄走错分支、取错 IMU 轴）。
+   这正是铁律 35 的原型坑：凡在 .c 里用 `#if CFG_*`，该 .c 必须能看到定义它的头文件。
+   （`-Wundef` 也能抓住它：`make strict` 当时就是这么报出来的。）*/
+#include "app_config.h"
+#include "MPU6050.h"    /* Pitch / Roll / gyro[] 的厂商 extern 声明 */
 /* 这两个量没有集中声明处（App_MotorDisable 定义在 app_tasks.c、g_pwmApplied 定义在
    control.c），这里显式 extern，类型与定义处一致（volatile u8）。*/
 extern volatile u8 App_MotorDisable;
@@ -32,6 +38,16 @@ void Board_ReadRaw(BoardRawState *out)
 	out->angle      = Angle_Balance;
 	out->gyro       = Gyro_Balance;
 	out->gyroTurn   = Gyro_Turn;
+	/* ★ 2026-10-15：左右倾角/角速度（供 0x10 的 roll / gy 字段）。
+	   厂商 DMP 只算了 Pitch/Roll 两个角（**没有偏航角**），而平衡角用的是 `-Roll`
+	   ⇒ Roll 是前后倾、**Pitch 即左右倾**；角速度与 `gyro[0]=前后 / gyro[2]=偏航` 正交 ⇒ 用 `gyro[1]`。
+	   `Pitch`/`Roll`/`gyro[]` 都是厂商全局量（MPU6050.c 定义、MPU6050.h 已 extern），本层直读。*/
+#if CFG_IMU_LR_FROM_PITCH
+	out->tiltLR     = Pitch;
+#else
+	out->tiltLR     = Roll;      /* 若真机实测该轴不对，改 app_config.h 的开关即可 */
+#endif
+	out->gyroLR     = (float)gyro[1];
 	out->encLeft    = (int32_t)Encoder_Left;
 	out->encRight   = (int32_t)Encoder_Right;
 	out->pwmLeft    = (int32_t)Moto1;

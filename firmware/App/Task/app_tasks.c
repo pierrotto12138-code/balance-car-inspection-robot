@@ -339,10 +339,11 @@ static void comm_task(void *arg)
 		if (s_tuningMode)
 		{
 			pose.pitch = (int16_t)(st.angle * 100.0f);
-			pose.roll = 0;
+			/* ★ 2026-10-15：左右倾角 / 左右角速度不再写死 0（详见下面周期上报处的同款说明）*/
+			pose.roll = (int16_t)(st.tiltLR * 100.0f);
 			pose.yaw = 0;
 			pose.gx = (int16_t)(st.gyro * 100.0f);
-			pose.gy = 0;
+			pose.gy = (int16_t)(st.gyroLR * 100.0f);
 			pose.gz = (int16_t)(st.gyroTurn * 100.0f);
 			Proto_Pack_Pose(&pose, payload);
 			send_frame(COMM_LINK_WIRE, PROTO_UP_POSE, payload, 12);
@@ -368,10 +369,14 @@ static void comm_task(void *arg)
 				lastTelemetryMs = now;
 
 				pose.pitch = (int16_t)(st.angle * 100.0f);
-				pose.roll = 0;
+				/* ★ 2026-10-15：左右倾角 / 左右角速度**不再写死 0**（用户反馈"左右倾角显示不出来"）。
+				   取值依据见 board_state.c 与 app_config.h 的 CFG_IMU_LR_FROM_PITCH：
+				   车靠 -Roll 保持平衡 ⇒ Roll 是前后倾，正交的 Pitch 即左右倾；角速度同轴取 gyro[1]。
+				   yaw 仍为 0：厂商 DMP 只算了 Pitch/Roll，**没有计算偏航角**（不编造）。 */
+				pose.roll = (int16_t)(st.tiltLR * 100.0f);
 				pose.yaw = 0;
 				pose.gx = (int16_t)(st.gyro * 100.0f);
-				pose.gy = 0;
+				pose.gy = (int16_t)(st.gyroLR * 100.0f);
 				pose.gz = (int16_t)(st.gyroTurn * 100.0f);
 				Proto_Pack_Pose(&pose, payload);
 				send_frame_all(PROTO_UP_POSE, payload, 12);
