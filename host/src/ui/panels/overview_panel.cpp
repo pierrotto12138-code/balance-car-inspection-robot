@@ -131,7 +131,15 @@ QGroupBox *OverviewPanel::buildMotionGroup()
 
     m_left = new ValueCard(QStringLiteral("左轮速"), QStringLiteral("mm/s"), 0, g);
     m_right = new ValueCard(QStringLiteral("右轮速"), QStringLiteral("mm/s"), 0, g);
-    m_pwm = new ValueCard(QStringLiteral("PWM 占空"), QStringLiteral("%"), 1, g);
+    // ★ 显示成**带符号的估算占空比**（−100%…+100%）：负值 = 反向，**不是异常**。
+    //   换算式来自固件：`Set_Pwm` 里 `CCR = |Moto|×1.17`、CCR 满量程 8400
+    //   ⇒ duty% = Moto ÷ 7179.5 × 100（见 units.h 的说明）。真正的异常是**顶到满量程**
+    //   （CCR 被截断、控制失去分辨率），所以只有饱和时才给琥珀提示。
+    m_pwm = new ValueCard(QStringLiteral("PWM 占空（估）"), QStringLiteral("%"), 1, g);
+    m_pwm->setToolTip(QStringLiteral(
+        "由 0x11 的「带符号电机输出均值」估算：duty% = Moto ÷ 7179.5 × 100\n"
+        "（固件 `Set_Pwm`：CCR = |Moto| × 1.17；CCR 满量程 8400）\n"
+        "★ 负值表示反向，属正常；|Moto| > 7179 时 CCR 顶到 8400 ⇒ 输出饱和（会提示）"));
     m_dist = new ValueCard(QStringLiteral("超声波距离"), QStringLiteral("cm"), 0, g);
 
     grid->addWidget(m_left, 0, 0);
@@ -402,20 +410,24 @@ void OverviewPanel::refresh()
         const auto &m = st.motion();
         m_left->setValue(m.leftMmS);
         m_right->setValue(m.rightMmS);
-        m_pwm->setValue(m.pwmPercent);
+        m_pwm->setValue(domain::units::motorDutyPercent(m.motorOutAvg)); // 带符号估算占空比
         m_dist->setValue(domain::units::cmFromMm(m.distanceMm)); // 字段是 mm，界面按 cm 显示
         const QString src = sourceText(proto::up::kMotion);
         m_left->setSub(src);
         m_right->setSub(src);
         m_dist->setSub(src);
-        // ★ PWM 字段按协议是千分比 0~1000（0~100 %）。真机实测（2026-10-15）固件上报的是
-        //   **带符号的电机输出**（如 −1579）。**不擅自截断**（那会掩盖协议偏差），而是标注出来 —
-        //   这正是"监控系统要如实"这条纪律的实际用法。
-        if (domain::pwmPermilleInProtocolRange(m.pwmPercent)) {
-            m_pwm->setSub(src);
-        } else {
+        // 负值不报警（反向是正常工作）；只有**饱和**才提示（CCR 被 8400 截断 ⇒ 控制失去分辨率）
+        if (domain::units::motorDutySaturated(m.motorOutAvg)) {
             m_pwm->setSeverity(domain::Severity::Warn);
-            m_pwm->setSub(QStringLiteral("超出协议约定 0~100 %（真机实测为带符号电机输出，待 B 确认）"));
+            m_pwm->setSub(QStringLiteral("已顶到满量程（|Moto|=%1 > %2 ⇒ CCR 被 8400 截断，"
+                                         "控制失去分辨率；原始值 %3）")
+                              .arg(std::abs(m.motorOutAvg))
+                              .arg(domain::units::number(domain::units::kMotoFullScale, 0))
+                              .arg(m.motorOutAvg));
+        } else {
+            m_pwm->setSub(QStringLiteral("%1 · 带符号（负=反向）· 原始值 %2/±8200")
+                              .arg(src)
+                              .arg(m.motorOutAvg));
         }
         m_avoid->setText(QStringLiteral("避障状态位：0b%1（协议未细化位定义，此处只原样显示）")
                              .arg(m.avoidFlags, 4, 2, QLatin1Char('0')));

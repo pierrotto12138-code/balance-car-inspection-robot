@@ -100,7 +100,16 @@ private slots:
         QCOMPARE(units::celsius(256), 25.6);
         QCOMPARE(units::rh(610), 61.0);
         QCOMPARE(units::volt(1180), 11.80);
-        QCOMPARE(units::pwmPercent(1200), 120.0);
+        // ★ 带符号估算占空比：负值 = 反向（**不是异常**）；只有超满量程才饱和
+        QCOMPARE(domain::units::motorDutyPercent(0), 0.0);
+        QCOMPARE(domain::units::motorDutyPercent(7179.5), 100.0);
+        QCOMPARE(domain::units::motorDutyPercent(-7179.5), -100.0);
+        QCOMPARE(domain::units::motorDutyPercent(8200), 100.0);   // 顶到量程 ⇒ 夹到 100
+        QCOMPARE(domain::units::motorDutyPercent(-8200), -100.0);
+        QVERIFY(domain::units::motorDutyPercent(-1579) < 0.0);    // 真机实测值：应为负
+        QVERIFY(qAbs(domain::units::motorDutyPercent(-1579) + 22.0) < 0.5);
+        QVERIFY(!domain::units::motorDutySaturated(-1579));       // 负值不算饱和
+        QVERIFY(domain::units::motorDutySaturated(8200));         // 8200 > 7179 ⇒ CCR 会被截断
         QCOMPARE(units::kLowBatteryV, 11.10);
     }
 
@@ -130,7 +139,7 @@ private slots:
         QVERIFY(decodeMotion(QByteArray::fromHex("fa0006ffb004550003"), mot));
         QCOMPARE(mot.leftMmS, 250);
         QCOMPARE(mot.rightMmS, -250);
-        QCOMPARE(mot.pwmPercent, 120.0);
+        QCOMPARE(mot.motorOutAvg, 1200); // ★ 带符号原始值（±8200 标度）；不再是"占空比 %"
         QCOMPARE(mot.distanceMm, 85);   // ★ 字段单位是 **mm**（不是 cm）—— 见 MotionData 的说明
         QCOMPARE(domain::units::cmFromMm(mot.distanceMm), 8.5); // 界面按 cm 显示
         QCOMPARE(int(mot.avoidFlags), 3);

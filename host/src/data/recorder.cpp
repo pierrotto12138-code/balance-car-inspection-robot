@@ -74,7 +74,7 @@ QStringList headerRow()
         QStringLiteral("阶段"),          QStringLiteral("完成度%"),     QStringLiteral("巡检点"),
         QStringLiteral("异常标志"),      QStringLiteral("俯仰deg"),     QStringLiteral("横滚deg"),
         QStringLiteral("偏航deg"),       QStringLiteral("角速度Xdps"),  QStringLiteral("左轮速mmps"),
-        QStringLiteral("右轮速mmps"),    QStringLiteral("PWM%"),        QStringLiteral("超声cm"),
+        QStringLiteral("右轮速mmps"),    QStringLiteral("电机输出均值"), QStringLiteral("超声cm"),
         QStringLiteral("避障位"),        QStringLiteral("MQ2ppm"),      QStringLiteral("MQ135ppm"),
         QStringLiteral("温度C"),         QStringLiteral("湿度%RH"),     QStringLiteral("采样档位"),
         QStringLiteral("电压V"),         QStringLiteral("显示页"),      QStringLiteral("剩余堆KB"),
@@ -215,7 +215,10 @@ void CsvRecorder::onFrame(io::LinkKind kind, quint8 cmd, const QByteArray &data)
         if (domain::decodeMotion(data, v)) {
             cols[LeftMmS] = QString::number(v.leftMmS);
             cols[RightMmS] = QString::number(v.rightMmS);
-            cols[Pwm] = num(v.pwmPercent, 1);
+            // CSV 里存**协议原始量**（带符号电机输出均值 ±8200），不存换算后的"估算占空比"：
+            // 归档文件要对"线上真实值"忠实，换算随时可做（公式见 units.h），
+            // 而把估算值写进归档会让人以为那是实测占空比。
+            cols[Pwm] = QString::number(v.motorOutAvg);
             cols[Dist] = num(domain::units::cmFromMm(v.distanceMm), 1);
             cols[Avoid] = QStringLiteral("0b%1").arg(v.avoidFlags, 4, 2, QLatin1Char('0'));
         }

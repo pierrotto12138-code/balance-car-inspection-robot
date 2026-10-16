@@ -44,7 +44,36 @@ inline double ppm(uint16_t raw) { return static_cast<double>(raw) * kPpmPerRaw; 
 inline double celsius(int16_t raw) { return static_cast<double>(raw) * kCelsiusPerRaw; }
 inline double rh(uint16_t raw) { return static_cast<double>(raw) * kRhPerRaw; }
 inline double volt(uint16_t raw) { return static_cast<double>(raw) * kVoltPerRaw; }
-inline double pwmPercent(int16_t raw) { return static_cast<double>(raw) * kPercentPerPermille; }
+
+/// `0x11` 的"电机输出均值" → **估算占空比（%，带符号）**。
+///
+/// 依据（**已烧录代码**，不是猜的）：
+///   · `control.c:281/284` 的 `Set_Pwm`：`CCR = |Moto| × 1.17`；
+///   · `control.c:294` 的 `Xianfu_Pwm`：`Moto` 限幅 ±8200，注释写明"PWM 满幅是 8400"。
+/// ⇒ `duty% = Moto × 1.17 ÷ 8400 × 100 = Moto ÷ 7179.5 × 100`，**负值表示反向**。
+///
+/// ★ 两条纪律：
+///   ① **负值不是异常**：占空比本来就是带符号的（正/反转），绝不能"一负就报警"
+///      —— 真正的异常是**顶到满量程**（CCR 被 8400 截断 ⇒ 控制失去分辨率，见 B 侧待办"限幅对齐 7179"）；
+///   ② 这是**估算值**（由固件换算关系推得），不是实测占空比 —— 界面必须标"估"。
+constexpr double kCcrPerMoto = 1.17;
+constexpr double kCcrFullScale = 8400.0;
+constexpr double kMotoFullScale = kCcrFullScale / kCcrPerMoto; ///< ≈7179.5（超过它就饱和）
+inline double motorDutyPercent(double motorOut)
+{
+    double pct = motorOut / kMotoFullScale * 100.0;
+    if (pct > 100.0) {
+        pct = 100.0;
+    } else if (pct < -100.0) {
+        pct = -100.0;
+    }
+    return pct;
+}
+/// 是否已顶到满量程（CCR 会被 8400 截断）—— 这才是值得提示的情况
+inline bool motorDutySaturated(double motorOut)
+{
+    return (motorOut > kMotoFullScale) || (motorOut < -kMotoFullScale);
+}
 
 /// 固定小数位格式化。
 ///

@@ -219,10 +219,12 @@ QString describeState(const domain::VehicleState &st, const io::LinkManager &mgr
 
     if (st.received(proto::up::kMotion)) {
         const auto &m = st.motion();
-        add(QStringLiteral("  运动：左 %1 mm/s / 右 %2 mm/s / PWM %3% / 超声 %4 cm / 避障位 0x%5")
+        add(QStringLiteral("  运动：左 %1 mm/s / 右 %2 mm/s / PWM 占空(估) %3 %（带符号；"
+                           "原始值 %4 ÷ 7179） / 超声 %5 cm / 避障位 0x%6")
                 .arg(m.leftMmS)
                 .arg(m.rightMmS)
-                .arg(domain::units::number(m.pwmPercent, 1))
+                .arg(domain::units::number(domain::units::motorDutyPercent(m.motorOutAvg), 1))
+                .arg(m.motorOutAvg)
                 .arg(domain::units::number(domain::units::cmFromMm(m.distanceMm), 1))
                 .arg(m.avoidFlags, 2, 16, QLatin1Char('0')));
     } else {

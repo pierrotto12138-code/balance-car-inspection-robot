@@ -45,7 +45,7 @@ bool decodeMotion(const QByteArray &d, MotionData &out)
     MotionData v;
     v.leftMmS = proto::getI16(p + 0);
     v.rightMmS = proto::getI16(p + 2);
-    v.pwmPercent = units::pwmPercent(proto::getI16(p + 4));
+    v.motorOutAvg = proto::getI16(p + 4); // 带符号原始值（±8200）——不是占空比千分比，见 frames.h 说明
     v.distanceMm = proto::getU16(p + 6);
     v.avoidFlags = p[8];
     out = v;

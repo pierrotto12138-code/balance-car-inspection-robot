@@ -250,17 +250,31 @@ void PatrolPanel::buildUi()
                                        "若仍在锁存，检查下行链路（保活是否开启 / 端口是否通）"));
     });
 
-    // 按住走、松手停：pressed/released 一对，语义就是"松手即停"
-    connect(m_btnFront, &QPushButton::pressed, this, [this]() { sendMotion(kLinForward, 0); });
-    connect(m_btnBack, &QPushButton::pressed, this, [this]() { sendMotion(-kLinForward, 0); });
+    // 按住走、松手停：pressed/released 一对。★ 但**只发一条是不够的** ——
+    // 固件对 0x20 有 **500 ms 看门狗**（`CFG_MOTION_TIMEOUT_MS`：超时就把方向标志清零），
+    // 协议也明确 0x20 是 **10 Hz** 周期指令 ⇒ 必须"按住期间持续重发"，
+    // 否则现象是"按一下车只动半秒就停"（本项目 2026-10-15 真机踩到，用户报"遥控不行"）。
+    connect(m_btnFront, &QPushButton::pressed, this, [this]() { startMotion(kLinForward, 0); });
+    connect(m_btnBack, &QPushButton::pressed, this, [this]() { startMotion(-kLinForward, 0); });
     connect(m_btnLeft, &QPushButton::pressed, this,
-            [this]() { sendMotion(0, kTurnLeftSign * kAngTurn); });
+            [this]() { startMotion(0, kTurnLeftSign * kAngTurn); });
     connect(m_btnRight, &QPushButton::pressed, this,
-            [this]() { sendMotion(0, -kTurnLeftSign * kAngTurn); });
+            [this]() { startMotion(0, -kTurnLeftSign * kAngTurn); });
     for (QPushButton *b : {m_btnFront, m_btnBack, m_btnLeft, m_btnRight}) {
-        connect(b, &QPushButton::released, this, &PatrolPanel::sendStop);
+        connect(b, &QPushButton::released, this, &PatrolPanel::stopMotion);
+        // ★ 按钮不抢键盘焦点：否则点一次按钮后，W/A/S/D 就不再送到面板（遥控"时好时坏"）
+        b->setFocusPolicy(Qt::NoFocus);
     }
-    connect(m_btnStop, &QPushButton::clicked, this, &PatrolPanel::sendStop);
+    connect(m_btnStop, &QPushButton::clicked, this, &PatrolPanel::stopMotion);
+
+    // 按住期间的重复发送（100 ms = 10 Hz，与协议一致；留 5 倍余量给 500 ms 看门狗）
+    m_holdTimer = new QTimer(this);
+    m_holdTimer->setInterval(100);
+    connect(m_holdTimer, &QTimer::timeout, this, [this]() {
+        if (m_holdActive) {
+            sendMotion(m_holdLin, m_holdAng);
+        }
+    });
 
     if (m_keepalive != nullptr) {
         m_kaEnable->setChecked(m_keepalive->enabled());
@@ -317,6 +331,26 @@ void PatrolPanel::sendTask(proto::TaskId id)
                         .arg(detail));
 }
 
+void PatrolPanel::startMotion(int linMmS, int angDpsX10)
+{
+    m_holdLin = linMmS;
+    m_holdAng = angDpsX10;
+    m_holdActive = true;
+    sendMotion(linMmS, angDpsX10);       // 立刻发第一条（不要等 100 ms）
+    if (m_holdTimer != nullptr) {
+        m_holdTimer->start();            // 之后按 10 Hz 持续重发，直到松手
+    }
+}
+
+void PatrolPanel::stopMotion()
+{
+    m_holdActive = false;
+    if (m_holdTimer != nullptr) {
+        m_holdTimer->stop();
+    }
+    sendStop();                          // enable=0 ⇒ 固件立即停（不等看门狗）
+}
+
 void PatrolPanel::sendMotion(int linMmS, int angDpsX10)
 {
     if (m_state->safetyLatched()) {
@@ -353,19 +387,19 @@ void PatrolPanel::keyPressEvent(QKeyEvent *event)
     }
     switch (event->key()) {
     case Qt::Key_W:
-        sendMotion(kLinForward, 0);
+        startMotion(kLinForward, 0);
         break;
     case Qt::Key_S:
-        sendMotion(-kLinForward, 0);
+        startMotion(-kLinForward, 0);
         break;
     case Qt::Key_A:
-        sendMotion(0, kTurnLeftSign * kAngTurn);
+        startMotion(0, kTurnLeftSign * kAngTurn);
         break;
     case Qt::Key_D:
-        sendMotion(0, -kTurnLeftSign * kAngTurn);
+        startMotion(0, -kTurnLeftSign * kAngTurn);
         break;
     case Qt::Key_Space:
-        sendStop();
+        stopMotion();
         break;
     default:
         QWidget::keyPressEvent(event);
@@ -385,7 +419,7 @@ void PatrolPanel::keyReleaseEvent(QKeyEvent *event)
     case Qt::Key_S:
     case Qt::Key_A:
     case Qt::Key_D:
-        sendStop(); // 松手即停（与按钮同一条路径）
+        stopMotion(); // 松手即停（与按钮同一条路径，含停掉 10 Hz 重发）
         event->accept();
         return;
     default:

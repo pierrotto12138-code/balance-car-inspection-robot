@@ -65,6 +65,10 @@ private:
     void sendTask(proto::TaskId id);
     void sendMotion(int linMmS, int angDpsX10);
     void sendStop();
+    /// 按下方向（按钮或键盘）：立刻发一条，并启动 10 Hz 重发
+    void startMotion(int linMmS, int angDpsX10);
+    /// 松手/停止：停掉重发并立刻发 enable=0
+    void stopMotion();
     void sendEstop();
     /// 锁存时禁用"会解除锁存"的起点类操作
     void applyInterlocks(bool latched);
@@ -108,5 +112,11 @@ private:
     QLabel *m_kaWarn = nullptr;
 
     QTimer *m_timer = nullptr;
+    /// 按住期间的重发定时器（10 Hz）与当前方向 —— 固件对 0x20 有 **500 ms 看门狗**，
+    /// 只发一条会变成"按一下只动半秒"（本项目 2026-10-15 真机踩到，用户报"遥控不行"）
+    QTimer *m_holdTimer = nullptr;
+    bool m_holdActive = false;
+    int m_holdLin = 0;
+    int m_holdAng = 0;
     bool m_lastLatched = false;
 };

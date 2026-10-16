@@ -46,8 +46,10 @@ struct PoseData {
 struct MotionData {
     int leftMmS = 0;      ///< 左轮速 mm/s（有符号：负 = 反转）
     int rightMmS = 0;     ///< 右轮速
-    double pwmPercent = 0.0; ///< PWM 字段 → %（★ 真机实测该字段是**带符号电机输出均值**≈±8200，
-                             ///< 不是协议 §七 约定 4 写的 0~1000 千分比 —— 见 `pwmPermilleInProtocolRange()`）
+    /// ★ `0x11` 偏移 4 的**原始值**：带符号**电机输出均值**（≈±8200，真机实测 −1579）。
+    /// 它**不是**协议 §七 约定 4 写的"占空比千分比 0~1000"（已按已烧录代码更正协议）。
+    /// 要看占空比请用 `0x16` 的 `Moto` / `CCR`（`CCR ≈ 1.17×|Moto|`，满量程 8400）。
+    int motorOutAvg = 0;
     int distanceMm = 0;   ///< 超声波距离 **mm**（标度为厂商常数、未按现场声速/安装角标定；不是 cm）
     uint8_t avoidFlags = 0; ///< 避障状态位（协议未细化位定义 → 只原样显示，不做语义假设）
 };
