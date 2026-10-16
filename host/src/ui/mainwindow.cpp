@@ -431,12 +431,20 @@ void MainWindow::refreshStatusBar()
     //      "当前现象与预期版本不符"曾是无法定位的争议，一读版本号即可排除。
     if (m_state->received(proto::up::kLoop)) {
         const quint8 fw = m_state->loop().fwVersion;
-        m_stFw->setText(QStringLiteral("固件 %1/%2").arg(domain::hexByte(fw),
-                                                        domain::firmwareVersionText(fw)));
+        // ★ 特性位（0x16 状态位 bit3）：**一眼判断板上是不是新固件** ——
+        //   同一天多次构建时 buildId 只到"日"，分辨不出来（本项目为此猜过一轮）。
+        const bool fresh = m_state->loop().featureBits();
+        m_stFw->setText(QStringLiteral("固件 %1/%2%3")
+                            .arg(domain::hexByte(fw), domain::firmwareVersionText(fw),
+                                 fresh ? QStringLiteral(" · 新特性✔")
+                                       : QStringLiteral(" · ⚠旧构建")));
         m_stFw->setStyleSheet(QStringLiteral("color:%1;")
-                                  .arg(QString::fromLatin1(fw == 0 ? theme::kWarn : theme::kTextDim)));
-        m_stFw->setToolTip(QStringLiteral("0x16 偏移 19 = (月<<4)|日。0x00 表示固件没上报版本字节"
-                                          "（烧的是旧版？）"));
+                                  .arg(QString::fromLatin1(fresh ? theme::kOk : theme::kWarn)));
+        m_stFw->setToolTip(
+            QStringLiteral("0x16 偏移 19 = (月<<4)|日；其状态位 bit3 = **固件特性位**。\n"
+                           "未置位 ⇒ 板上是**旧构建**（缺 10-15 晚的改动：左右倾角上报 /\n"
+                           "转向环启用 / 前进档 150 / MQ-135 角色指派）⇒ 请重烧 "
+                           "firmware/build/MiniBalance.hex。"));
     } else {
         m_stFw->setText(QStringLiteral("固件 --"));
         m_stFw->setStyleSheet(QStringLiteral("color:%1;").arg(QString::fromLatin1(theme::kOffline)));

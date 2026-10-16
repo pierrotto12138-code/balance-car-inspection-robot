@@ -267,7 +267,7 @@ uint16_t crc16_modbus(const uint8_t *buf, uint16_t len)
 | 12 | `CCR_B` | uint16 | 右轮（TIM1->CCR1）|
 | 14 | `EncLeft` | int16 | 编码器**原始计数**（每 10 ms，不依赖轮径标定）|
 | 16 | `EncRight` | int16 | 同上 |
-| 18 | 状态位 | uint8 | bit0 `Flag_Stop` / bit1 `App_MotorDisable` / bit2 **本拍真的调用了 `Set_Pwm`** |
+| 18 | 状态位 | uint8 | bit0 `Flag_Stop` / bit1 `App_MotorDisable` / bit2 **本拍真的调用了 `Set_Pwm`** / **bit3 固件特性位**（★ v1.2 新增，2026-10-15：1 = 该构建含"左右倾角上报 / 转向环启用 / 前进档 150 / MQ-135 角色指派"。**用途：同一天多次构建时 `buildId` 只到"日"，靠它才能一眼判断板上是哪一版**；上位机读到 0 会提示"旧构建，请重烧"） |
 | 19 | **固件版本字节** | uint8 | **`(月 << 4)` ｜ `日`**，当前 **`0xAF`** = 10 月 15 日（见 §3.7）。原先定义为"保留"，v1.2 起改为版本字节 |
 
 **判读要点**：偏移 6/8 与 10/12 对照 ⇒"算了没执行"（如 `Moto1=6000` 而 `CCR_A=0`）；

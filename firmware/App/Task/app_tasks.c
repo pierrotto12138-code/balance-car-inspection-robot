@@ -471,7 +471,8 @@ static void comm_task(void *arg)
 						it.encRight    = ci.encRight;
 						it.statusBits  = (uint8_t)((ci.flagStop ? 0x01u : 0u) |
 												   (ci.motorDisable ? 0x02u : 0u) |
-												   (ci.pwmApplied ? 0x04u : 0u));
+												   (ci.pwmApplied ? 0x04u : 0u) |
+												   CFG_FW_FEATURE_BITS);
 						it.reserved    = CFG_FW_BUILD_ID;   /* 固件版本字节（月<<4|日）*/
 						Proto_Pack_Internals(&it, payload);
 						send_frame_all(PROTO_UP_INTERNALS, payload, 20);

@@ -129,6 +129,10 @@ struct LoopData {
     bool flagStop() const { return (stateBits & 0x01) != 0; }
     bool motorDisabled() const { return (stateBits & 0x02) != 0; }
     bool setPwmCalled() const { return (stateBits & 0x04) != 0; }
+    /// 固件**特性位**（bit3，2026-10-15 晚新增）：1 = 该构建包含"左右倾角上报 / 转向环启用 /
+    /// 前进档 150 / MQ-135 角色指派"。**用途：一眼判断板上是不是新固件**
+    /// （同一天多次构建时 `buildId` 只有"日"，分辨不出来 —— 本项目为此猜过一轮）。
+    bool featureBits() const { return (stateBits & 0x08) != 0; }
 
     /// "算了没执行"的直接断言：算出的轮值非零、但写进寄存器的占空为 0
     bool computedButNotExecuted() const

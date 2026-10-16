@@ -518,10 +518,12 @@ int runProbe(const QString &port, int baud, double seconds, bool heartbeat, bool
                                   "静止时都≈0，此判据需在推车时看）\n")
                        .arg(l.encLeft)
                        .arg(l.encRight)
-                << QStringLiteral("  状态位：bit0 Flag_Stop=%1 · bit1 电机被禁=%2 · bit2 本拍调 Set_pwm=%3\n")
+                << QStringLiteral("  状态位：bit0 Flag_Stop=%1 · bit1 电机被禁=%2 · bit2 本拍调 Set_pwm=%3"
+                                  " · **bit3 新特性=%4**（0 = 板上是旧构建，请重烧！）\n")
                        .arg(l.flagStop() ? 1 : 0)
                        .arg(l.motorDisabled() ? 1 : 0)
-                       .arg(l.setPwmCalled() ? 1 : 0);
+                       .arg(l.setPwmCalled() ? 1 : 0)
+                       .arg(l.featureBits() ? 1 : 0);
             // 倾角保护（≥40° 关电机；现场常见，不是故障）
             if (state.received(proto::up::kPose)) {
                 const double zz = echoes.contains(0x05) ? double(echoes.value(0x05)) : 0.5;
