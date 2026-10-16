@@ -11,7 +11,7 @@ from OCP.IGESControl import IGESControl_Reader
 from OCP.STEPControl import STEPControl_Reader
 from OCP.IFSelect import IFSelect_RetDone
 from OCP.TopExp import TopExp_Explorer
-from OCP.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_FACE, TopAbs_COMPOUND
+from OCP.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_FACE, TopAbs_COMPOUND, TopAbs_REVERSED
 from OCP.TopoDS import TopoDS
 from OCP.BRepBndLib import BRepBndLib
 from OCP.Bnd import Bnd_Box
@@ -94,12 +94,15 @@ def tessellate(shape, tol=0.2):
         if tri is not None:
             trsf = loc.Transformation()
             base = len(verts)
+            rev = (face.Orientation() == TopAbs_REVERSED)   # ★ 面朝向决定三角面绕向
             for k in range(1, tri.NbNodes() + 1):
                 p = tri.Node(k).Transformed(trsf)
                 verts.append((p.X(), p.Y(), p.Z()))
             for k in range(1, tri.NbTriangles() + 1):
                 t = tri.Triangle(k)
                 a1, a2, a3 = t.Get()
+                if rev:
+                    a2, a3 = a3, a2
                 faces.append((base + a1 - 1, base + a2 - 1, base + a3 - 1))
         ex.Next()
     return np.array(verts, dtype=float), np.array(faces, dtype=np.int64)

@@ -17,21 +17,24 @@ from trimesh.proximity import ProximityQuery
 
 # ------------------------------------------------------------------ 载入
 def load_model(path):
-    """返回 (parts:list[Trimesh], names:list[str])；STEP/多体文件保留分件。"""
+    """返回 (parts:list[Trimesh], names:list[str])；STEP/多体文件保留分件。
+
+    ★ 场景变换必须按 graph.nodes_geometry 逐节点取（早前按 geometry 字典顺序配 T 会错位，
+      表现为"多数零件停在原点、中心坐标全是 (0,0)"）。
+    """
     obj = trimesh.load(path, force="scene")
     parts, names = [], []
     if isinstance(obj, trimesh.Scene):
-        for name, geom in obj.geometry.items():
-            if isinstance(geom, trimesh.Trimesh) and len(geom.faces):
-                parts.append(geom); names.append(str(name))
-        # 场景里若有非单位变换，逐个应用
-        for i, (node, geom) in enumerate(obj.geometry.items()):
-            try:
-                T = obj.graph.get(node)[0]
-                if T is not None:
-                    parts[i] = parts[i].copy().apply_transform(T)
-            except Exception:
-                pass
+        for node in obj.graph.nodes_geometry:
+            T, geom_name = obj.graph[node]
+            geom = obj.geometry.get(geom_name)
+            if not isinstance(geom, trimesh.Trimesh) or not len(geom.faces):
+                continue
+            part = geom.copy()
+            if T is not None:
+                part.apply_transform(T)
+            parts.append(part)
+            names.append(str(node or geom_name))
     elif isinstance(obj, trimesh.Trimesh):
         parts, names = [obj], ["part0"]
     if not parts:
@@ -43,6 +46,22 @@ def load_model(path):
 
 def merged(parts):
     return trimesh.util.concatenate(parts) if len(parts) > 1 else parts[0]
+
+def find_board(parts):
+    """按几何特征找出"主板本体"：XY 覆盖最大、Z 最薄的那块（不依赖零件名）。
+
+    背景：STEP 读进来的节点名可能是 `=>[0:1:1:2]` 这类序号，靠名字找板不可靠。
+    """
+    best, best_score = None, -1
+    for p in parts:
+        s = p.bounds[1] - p.bounds[0]
+        if s[2] > 3.0 or s[0] < 20 or s[1] < 20:
+            continue
+        score = s[0] * s[1] / max(s[2], 0.2)
+        if score > best_score:
+            best, best_score = p, score
+    return best
+
 
 def fix_units(parts):
     """STEP/STL 单位自适应：把"米/厘米"量级的模型换算成毫米（按最长边推断）。"""
@@ -210,7 +229,7 @@ def cmd_check(a):
     ok = size[0] >= 100 + 2*a.clearance_mm and size[1] >= 65 + 2*a.clearance_mm
     print("  ⇒", "✅ 尺寸够" if ok else "✗ 尺寸偏小（或你把原点放在了模型角上，需人工确认基准）")
 
-    holes = detect_holes(shell, min_d=2.4, max_d=4.4)
+    holes, _hax = detect_holes(shell, min_d=2.4, max_d=4.4)
     print(f"\n检出 Φ2.4~4.4 的孔 {len(holes)} 个；与 3 个安装孔位置比对：")
     for hx, hy in HOLES:
         best = None; bd = 1e9
@@ -268,7 +287,7 @@ def cmd_drawing(a):
         d.rectangle([x0, y0, x1, y1], outline="#bbb")
         d.text((x0+8, y1+6), {"front": "主视图", "top": "俯视图", "right": "左视图"}[v], font=F(24, True), fill="#111")
     # 孔表
-    holes = detect_holes(m, min_d=1.5, max_d=40)
+    holes, _hax = detect_holes(m, min_d=1.5, max_d=40)
     d.text((1450, 150), f"检出孔/圆特征 {len(holes)} 个（Φ / 中心）", font=F(26, True), fill="#111")
     yy = 200
     for h in holes[:22]:
@@ -304,6 +323,7 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+
 
 
 
