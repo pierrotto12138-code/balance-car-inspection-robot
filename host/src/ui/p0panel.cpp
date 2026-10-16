@@ -78,7 +78,7 @@ QColor stateColor(io::LinkState st)
 P0Panel::P0Panel(io::LinkManager *mgr, QWidget *parent) : QWidget(parent), m_mgr(mgr)
 {
     auto *root = new QVBoxLayout(this);
-    setMinimumWidth(900); // 再窄就会出现卡片被裁（见 P0 截图发现）
+    setMinimumWidth(640); // 小屏友好：原来 900 会把窗口顶到屏外（卡片本身可随布局收窄）
 
     // ---------------- 两条链路的卡片 ----------------
     // ★ 上下堆叠而不是左右并排：并排时卡片的"最小宽度"（下拉框 + 状态文本 + 统计文本）

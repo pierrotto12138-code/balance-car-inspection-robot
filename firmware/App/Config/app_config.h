@@ -90,8 +90,14 @@
 #define CFG_OVR_VELOCITY_KP      -80.0f    /* ★ 本轮恢复：速度环 P（抑制漂移；若跑飞改 -80）*/
 #define CFG_OVR_VELOCITY_KI      -0.4f     /* ★ 本轮恢复：速度环 I（若跑飞改 -0.4）*/
 #define CFG_OVR_ZHONGZHI         0.5f     /* 角度中值（怀疑重心偏后 ⇒ 可 ±0.3~0.5 试）*/
-#define CFG_OVR_TURN_KP          0.0f     /* 转向环保持 0（不再转圈）*/
-#define CFG_OVR_TURN_KD          0.0f
+#define CFG_OVR_TURN_KP          52.0f    /* ★ 2026-10-15 启用转向环（用户要求"解放转圈"）：
+                                               厂商默认 52。原先置 0 是为了避免"原地转圈"，
+                                               而那次故障的真因是 `control.c` 里**裸 if 缺花括号**
+                                               （已修，见铁律 37）—— 不是转向环本身的问题。
+                                               ★ 现在可以在上位机调参页用 0x24 在线改（±500），
+                                               嫌猛/嫌弱直接在上面调，不必重烧。*/
+#define CFG_OVR_TURN_KD          0.5f     /* 厂商默认 0.5；仅"前后运动中转向"时参与
+                                               （`turn()` 原地转时有意把 Kd 置 0）*/
 
 #define CFG_FW_BUILD_ID        0xAF    /* 2026-10-15 */
 

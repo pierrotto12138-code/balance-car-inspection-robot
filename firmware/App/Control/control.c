@@ -195,8 +195,15 @@ int velocity(int encoder_left,int encoder_right)
 		}
 
 		//=============遥控前进后退部分=======================//
-		if(Bi_zhang!=0&&Flag_sudu==1)  Target_Velocity=55;                 //如果进入避障模式,自动进入低速模式
-    else 	                         Target_Velocity=110;
+		/* ★ 2026-10-15（用户反馈"前后有点过于保守，再猛烈一点点"）：
+		   `Target_Velocity` 是**速度环的给定**（真正的快慢由它决定；上位机 0x20 里的 linMmS
+		   只用来判方向，**量值不参与调速** —— 见 app_tasks.c 的 0x20 处理）。
+		   原来 110（Movement = 110/Flag_sudu = 55），现提到 150（Movement = 75，约 +36%）。
+		   再想快/慢就调这一个数；若哪天要做成"上位机在线可调"，走 0x24 加一个参数字即可。*/
+#define TARGET_VELOCITY_NORMAL   150      /* 常规档（原 110）*/
+#define TARGET_VELOCITY_AVOID     70      /* 避障档（低速；原 55）*/
+		if(Bi_zhang!=0&&Flag_sudu==1)  Target_Velocity=TARGET_VELOCITY_AVOID;
+    else 	                         Target_Velocity=TARGET_VELOCITY_NORMAL;
 		if(1==Flag_Qian)    	Movement=-Target_Velocity/Flag_sudu;	         //===前进标志位置1
 		else if(1==Flag_Hou)	Movement=Target_Velocity/Flag_sudu;         //===后退标志位置1
 		else  Movement=0;

@@ -10,7 +10,7 @@
 
 AttitudeIndicator::AttitudeIndicator(QWidget *parent) : QWidget(parent)
 {
-    setMinimumSize(180, 130);
+    setMinimumSize(140, 100); // 小屏友好（原来 180×130 太占地方）
 }
 
 void AttitudeIndicator::setAttitude(double rollDeg, double pitchDeg, bool valid)

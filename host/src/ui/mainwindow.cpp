@@ -20,6 +20,9 @@
 #include <QClipboard>
 #include <QDateTime>
 #include <QDir>
+#include <QGuiApplication>
+#include <QScreen>
+#include <QScrollArea>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -57,7 +60,20 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain
       m_log(log), m_params(params), m_recorder(recorder), m_store(store)
 {
     setWindowTitle(QStringLiteral("仓储环境安全巡检机器人 · 上位机"));
-    resize(1560, 960);
+    // ★ 2026-10-15 修"全屏时显示不全"：原先把窗口写死 1560×960，而常见笔记本屏是 1366×768
+    //   ⇒ 窗口比屏幕还大，底部永远在屏外；又因为各页有"硬最小高"，窗口也缩不下去 ⇒ 内容被裁。
+    //   现在：① 默认尺寸取"设计尺寸"与"可用屏幕"的较小者（留出任务栏与边框余量）；
+    //        ② 每一页都套一层 QScrollArea（内容再大也能滚动看到，不会"看不见就当没有"）。
+    {
+        int w = 1560;
+        int h = 960;
+        if (QScreen *sc = QGuiApplication::primaryScreen()) {
+            const QRect avail = sc->availableGeometry();
+            w = qMin(w, avail.width() - 40);
+            h = qMin(h, avail.height() - 60);
+        }
+        resize(qMax(w, 900), qMax(h, 600));
+    }
 
     // ---------------- 左侧导航 + 中央堆叠 ----------------
     auto *central = new QWidget(this);
@@ -83,13 +99,18 @@ MainWindow::MainWindow(io::LinkManager *mgr, domain::VehicleState *state, domain
     m_tune = new TunePanel(m_state, m_mgr, m_params, m_log, m_stack);
     m_events = new EventPanel(m_log, m_stack);
     m_p0 = new P0Panel(m_mgr, m_stack);
-    m_stack->addWidget(m_overview);
-    m_stack->addWidget(m_patrol);
-    m_stack->addWidget(m_curves);
-    m_stack->addWidget(m_tune);
-    m_stack->addWidget(m_events);
-    m_stack->addWidget(m_p0);
-    m_stack->addWidget(buildSelfTestPage());
+    // 每页套一层可滚动容器：小屏/全屏下"看不到"的内容可以滚出来（而不是被裁掉）
+    for (QWidget *page : {static_cast<QWidget *>(m_overview), static_cast<QWidget *>(m_patrol),
+                          static_cast<QWidget *>(m_curves), static_cast<QWidget *>(m_tune),
+                          static_cast<QWidget *>(m_events), static_cast<QWidget *>(m_p0),
+                          buildSelfTestPage()}) {
+        auto *sa = new QScrollArea(m_stack);
+        sa->setWidgetResizable(true);   // 内容随视口自适应宽度（横向不强制出滚动条）
+        sa->setFrameShape(QFrame::NoFrame);
+        sa->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        sa->setWidget(page);
+        m_stack->addWidget(sa);
+    }
 
     hl->addWidget(m_nav);
     hl->addWidget(m_stack, 1);

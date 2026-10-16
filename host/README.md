@@ -114,6 +114,7 @@ ctest --test-dir build --output-on-failure
 #    · --shot-tab：0=总览 1=巡检与控制 2=曲线与告警 3=调参与记录 4=事件流 5=通信链路 6=协议自检
 #    · --shot-delay 13000 配 --rate 5：让假源先跑完 60 s 虚拟时间的剧本，图上才有告警标记
 #    · 想拍"锁存"那一屏：--rate 5 --shot-delay 8800（虚拟 44 s ∈ 急停锁存窗口 40~48 s）
+#    · --size 1366x768：强制窗口尺寸（小屏验证用；默认按屏幕自适应，窗口不会再比屏幕大）
 
 # ③ 录制与回放（现场复盘 / 无硬件演示）
 ./build/host.exe --record build/capture.csv          # 启动即录制（CSV 逐帧 + SQLite 会话）

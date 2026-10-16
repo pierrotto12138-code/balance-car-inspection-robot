@@ -582,6 +582,11 @@ int main(int argc, char *argv[])
                                               "3=事件流 4=通信链路 5=协议自检"),
                                QStringLiteral("页号"), QStringLiteral("0"));
     parser.addOption(shotTab);
+    QCommandLineOption sizeOpt(QStringLiteral("size"),
+                               QStringLiteral("强制窗口尺寸 WxH（★ 小屏验证用：默认按屏幕自适应；"
+                                              "例如 --size 1366x768 复现笔记本屏）"),
+                               QStringLiteral("WxH"));
+    parser.addOption(sizeOpt);
     // 假源速率倍数：×5 时约 12 s 就能看到完整的安全剧本（气体冲高→急停锁存→解除→低压）
     QCommandLineOption rate(QStringLiteral("rate"),
                             QStringLiteral("假源速率倍数（1.0 = 按协议真实周期；5 = 五倍速演示）"),
@@ -709,6 +714,13 @@ int main(int argc, char *argv[])
     }
 
     MainWindow w(&manager, &state, &alarm, &keepalive, &log, &params, &recorder, &store);
+    if (parser.isSet(sizeOpt)) {
+        // 小屏验证/演示固定尺寸：`--size 1366x768`
+        const QStringList wh = parser.value(sizeOpt).split(QLatin1Char('x'), Qt::SkipEmptyParts);
+        if (wh.size() == 2) {
+            w.resize(wh.at(0).toInt(), wh.at(1).toInt());
+        }
+    }
     w.show();
     if (parser.isSet(demo) || parser.isSet(play)) {
         manager.openAll(); // 窗口显示后再开链路，界面上能直接看到状态变化

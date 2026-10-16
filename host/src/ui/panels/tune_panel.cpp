@@ -98,7 +98,7 @@ void TunePanel::buildUi()
         m_table->setColumnWidth(kColRange, 110);
         m_table->setColumnWidth(kColDefault, 60);
         m_table->setColumnWidth(kColSource, 90);
-        m_table->setMinimumHeight(260); // 7 行参数要放得下（190 会把 0x06/0x07 截掉）
+        m_table->setMinimumHeight(150); // 小屏友好：表内可滚动，7 行仍可达（原来 260 会把窗口顶到屏外）
         vl->addWidget(m_table);
 
         auto *edit = new QHBoxLayout;
