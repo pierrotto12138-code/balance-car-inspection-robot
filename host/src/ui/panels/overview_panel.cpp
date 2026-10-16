@@ -461,12 +461,17 @@ void OverviewPanel::refresh()
         for (ValueCard *c : {m_temp, m_hum, m_mq2, m_mq135, m_gear}) {
             c->setSub(src);
         }
-        // 就绪位为 0 时**不能显示"0 ppm"让人以为空气干净** —— 置灰并写明"未就绪"
+        // 就绪位为 0 时**不能显示"0 ppm"让人以为空气干净** —— 置灰并写明"未就绪"。
+        // ★ 2026-10-15 补充：当前台架只有 MQ-135 模块且插在 J13（板上丝印是 "MQ-2" 座），
+        //   固件已把 **MQ-135 角色指派给 J13**（`sensor_adc.h`）⇒ 正常现象是
+        //   **MQ-135 有数、MQ-2 一直是"未就绪 + 0"（空座）**，不要当成故障。
         if (!e.mq2Ready()) {
-            m_mq2->setInvalid(QStringLiteral("MQ-2 未就绪（未插/未预热）"));
+            m_mq2->setInvalid(QStringLiteral("MQ-2 未就绪（该座未插模块／未预热／未标定）"
+                                             "—— 0 ppm 不代表空气干净"));
         }
         if (!e.mq135Ready()) {
-            m_mq135->setInvalid(QStringLiteral("MQ-135 未就绪（未插/未预热）"));
+            m_mq135->setInvalid(QStringLiteral("MQ-135 未就绪（该座未插模块／未预热／未标定）"
+                                               "—— 0 ppm 不代表空气干净"));
         }
         if (!e.dht11Valid()) {
             m_temp->setInvalid(QStringLiteral("DHT11 无效"));
