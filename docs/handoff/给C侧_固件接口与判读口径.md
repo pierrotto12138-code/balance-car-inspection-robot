@@ -149,11 +149,17 @@ C 侧的调参界面允许填负值（不挡正确值），但**下发负值必�
 ### 3.3.2 避障阈值（`control.c:198-206`）—— 目前**不是**参数
 
 ```c
-if(Bi_zhang!=0 && Flag_sudu==1) Target_Velocity=55;        /* 避障自动低速（厂商档位）*/
+#define TARGET_VELOCITY_NORMAL   150      /* 常规档（2026-10-15 由 110 提高，Movement 55→75）*/
+#define TARGET_VELOCITY_AVOID     70      /* 避障档（由 55 提高）*/
+if(Bi_zhang!=0 && Flag_sudu==1) Target_Velocity=TARGET_VELOCITY_AVOID;
+else                            Target_Velocity=TARGET_VELOCITY_NORMAL;
 if(Bi_zhang==1 && Flag_Left!=1 && Flag_Right!=1)
 { if(Distance<500) Movement=Target_Velocity/Flag_sudu; }   /* 500 = 50 cm：触发即后退 */
 ```
 
+- ★ **真正决定快慢的是 `Target_Velocity / Flag_sudu`**（`Flag_sudu` 初值 2 = 低速档；只有厂商遥控器/APP 能置 1）；
+  上位机 `0x20` 里的 `linMmS` **只用来判方向（|lin| ≥ 50），量值不参与调速** —— 想调快慢改上面这个常量
+  （或按 §5 第 8 条的做法做成 `0x24` 在线可调参数）；
 - `Distance` 的单位是 **0.1 cm**（`show.c:99` 用 `Distance/10` 当 cm 显示）⇒ `500` = **50 cm**；
 - ★ **"触发距离"与"退到多远"是同一个数**：车一直退到超声波读数 ≥ 50 cm 为止；
   **没有回差** ⇒ 在阈值附近会前进/后退来回切换；
@@ -164,6 +170,28 @@ if(Bi_zhang==1 && Flag_Left!=1 && Flag_Right!=1)
 固件规定 **500 ms 无下行帧 ⇒ 安全停车并锁存**（**硬件按键也解不开**）。
 所以上位机必须周期发合法下行帧，**但只能用 `0x1F` 心跳**：`0x20 enable=1` 与 `0x21 自主巡航`
 都会**解除安全锁存** ⇒ 若拿它们当保活，等于每 200 ms 自动拆掉一次急停保护（铁律 29 的旁路、铁律 40）。
+
+### 3.5 左右倾角 / 左右角速度（`0x10` 的 `roll` / `gy`，2026-10-15 新增）
+
+- **背景**：本机 `Way_Angle=2`（卡尔曼，`main.c:8`），而 `Get_Angle()` 里**只有 `way==1` 才会调用
+  `Read_DMP()`** ⇒ DMP 输出的 `Pitch / Roll / gyro[] / accel[]` **从不更新、恒为 0**。
+  （C 侧曾按"车靠 `-Roll` 平衡 ⇒ `Pitch` 是左右倾"的推理去取 `Pitch`：方向对，但**取不到值**，
+  真机实测"横滚恒 0.00"就是这个原因。）
+- **现口径**：`Angle_LR = atan2(Accel_X, Accel_Z)`（加速度计 X 轴，与厂商用 Y/Z 算平衡角**正交同构**），
+  角速度取**陀螺仪 Y 轴** ⇒ **与用哪种姿态算法无关**，卡尔曼/互补/DMP 下都有效。
+- ⚠ **口径要如实标注**：`Angle_LR` 是**仅加速度计的静态倾角**（未做陀螺仪融合）⇒ 车体运动/振动时噪声大；
+  界面文案必须写"**静态**"，不能当成融合角。
+- 开关：`app_config.h` 的 `CFG_IMU_LR_SOURCE`（0=加速度计，默认 / 1=DMP `Pitch`）、
+  `CFG_IMU_LR_SIGN`（±1 翻符号）—— 一行可改，不必动别处。
+
+### 3.6 固件特性位（`0x16` 状态位 bit3）—— ★ 判断"板上是哪版固件"
+
+- 起因：同一天有多次构建（MQ-135 角色指派 → 转向环/提速 → 左右倾角），而 `CFG_FW_BUILD_ID`
+  只能表达到"日"（`0xAF` = 10-15）⇒ 现场**无法分辨板子上跑的是哪一版**，本项目为此猜过一轮
+  （一度误判"没烧进去"，实为读到了烧录前的旧数据）。
+- 现约定：**bit3 = 1** 表示该构建含"左右倾角上报 / 转向环启用 / 前进档 150 / MQ-135 角色指派"。
+- C 侧判读：状态条固件栏显示 `固件 0xAF/10-15 · 新特性✔` 或 `· ⚠旧构建`；
+  `host.exe --probe-readback` 会直接打印该位。**未置位 ⇒ 请重烧 `firmware/build/MiniBalance.hex`。**
 
 ---
 
