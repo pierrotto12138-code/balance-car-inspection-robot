@@ -2,7 +2,8 @@
 """PCB2.epcb2 离线解析（修正版）：板框/圆角/孔 + 器件坐标 + 座外形（用 footprintPrimitives）。"""
 import json, os, csv, math
 
-SNAP = r"D:\260921Task\hardware\硬件工程_完工版_20261008_最终\pcb\PCB2.epcb2"
+import sys
+SNAP = sys.argv[1] if len(sys.argv) > 1 else r"D:\260921Task\hardware\硬件工程_完工版_20261008_最终\pcb\PCB2.epcb2"
 OUT = r"D:\260921Task_私有资料\正式作业提交\_A2审阅"
 MIL = 0.0254
 dec = json.JSONDecoder()
@@ -127,3 +128,4 @@ json.dump({"board_mm": [round(W, 2), round(H, 2)], "origin_mil": [OX, OY],
            "holes_mm": [[round((c[0]-OX)*MIL, 2), round((c[1]-OY)*MIL, 2), round(2*c[2]*MIL, 2)] for c in holes],
            "comps": rows}, open(os.path.join(OUT, "A2_接口摘要.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 print("\n已写 A2_接口坐标表_20261016.csv + A2_接口摘要.json")
+
