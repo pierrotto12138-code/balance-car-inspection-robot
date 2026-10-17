@@ -232,7 +232,10 @@ var all = await eda.sch_PrimitiveAttribute.getAll();             // 用它确认
 
 ### 8.3 本机 SolidWorks 2026 打不开任何 STEP（待人工确认）
 
-2026-10-17 用 `mcp__solidworks__*` 实测：连 40×30×10 的长方体 STEP 都报
+2026-10-17 实测（当时通过 SolidWorks 的 COM/MCP 通道调）：连 40×30×10 的长方体 STEP 都报
 `OpenDoc6 errors=2097152`（`swFileRequiresRepairError`），AP203/AP214、`.step`/`.stp`、
 中文路径/纯 ASCII 路径**全都一样**；而 **STL 能正常打开** ⇒ 不是文件问题，是这台机器的
-STEP 导入器。**结论**：自动化里别假设 STEP 可导入，先在 GUI 里手开一次定位。
+STEP 导入器。**结论**：别假设"STEP 一定能在 SW 里打开"，先在 GUI 里手开一次定位。
+
+> 那个 COM/MCP 通道（第三方 `dsh-solidworks`）当天就卸载了（不符合 DSH 插件规范，待重做）；
+> 结论仍然成立，因为它量的是 SolidWorks 本体，不是桥。
