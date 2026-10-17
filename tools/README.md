@@ -178,3 +178,30 @@ var all = await eda.sch_PrimitiveAttribute.getAll();             // 用它确认
 **不要用自己写的解析器去验自己的改动** —— 它可能和改动共享同一个错误假设。
 可靠做法：**看文件里那条记录**（`{"key":"NET","value":"PB1","parentId":"<导线id>"}`），
 或者**同步到 PCB 后数焊盘个数**。
+
+## 7. A2 结构工具（离线几何内核，不用装 CAD）
+
+> 全部走 **OpenCASCADE（`cadquery-ocp`）+ trimesh**：STEP/STL 真几何，能出图、能量、能布尔。
+> 交付件在仓库外 `…\260921Task_私有资料\正式作业提交\_A2审阅\`；参数与口径见
+> [`docs/design_mechanical/A2_结构进展与待办.md`](../docs/design_mechanical/A2_结构进展与待办.md)。
+
+| 文件 | 用途 | 何时用 |
+|---|---|---|
+| `mech_export.py` | 离线导出**机械接口数据**（板框/孔位/52 器件坐标），见 §2 | A2 开工 |
+| `mesh_tools.py` | **★ 通用三维工具**：`info` 量化（尺寸/体积/水密/竖孔）/ `render` 四视图 / `holes` 孔检 / `check` 壁厚干涉 / `drawing` 零件图（三视图 + 尺寸 + 孔表 + 图框 + 仿宋）| 任何"量一下/看一眼/出一张图" |
+| `a2_shell.py` | **★ 外壳生成**：下壳 + 上壳 + 装配体 STEP/STL（参数全在文件顶部：`TOP_H` / `MARGIN` / `WALL` / 开孔表）| 改结构后重出外壳 |
+| `a2_print_coupon.py` | **★ 孔位试印件**：只打"下壳底板段 + 3 安装柱 + 4 外凸耳"（≈20 cm³），30 min 打完就能验孔位/铜柱/M3 自攻 → **不拿整壳去赌** | **打整壳之前必打** |
+| `a2_car_assembly.py` | 整车装配（网格）：底盘 + 两轮 + 电机 + 电池 + 铜柱 | 出整车视图/爆炸图 |
+| `a2_car_step.py` | 整车导出 STEP：默认复合体 / `--light` 轻量 / `--xcaf` 带零件名与颜色的**装配树**（云 CAD / SolidWorks 可看树）| 交给评审/在 CAD 里打开 |
+| `a2_explode.py` | 爆炸图 + 明细栏（含序号引出） | 交付图纸 |
+| `step_intake.py` | **外来 STEP/IGES 一条命令体检**：件数/尺寸/水密/孔位 + 与"我们的口径"对照 | 拿到厂商或往届模型时先跑它 |
+| `ref_parts_scan.py` | 参考件批量体检（先缓存 STL 再分析，避免反复解析大 STEP）| 拿来一堆外来件时 |
+| `iges_read.py` | IGES/STEP 实体清单 + 细分导出（含面朝向修正）| 只想拆出某几件 |
+| `sw_com.ps1` | **SolidWorks COM 封装**（`info`/`open`/`mass`/`export`/`close`）：附加到已开的实例、一律不保存、单位 mm-g | 想用真 SW 量质量属性/转格式，但不想拼 COM |
+
+### ⚠️ 跑这些脚本的两个本机坑
+
+1. **PATH 上的 `python` 缺依赖**（没有 numpy/trimesh/OSCP）⇒ 用 **DSH 运行时自带的解释器**：
+   `C:\Users\<你>\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe`
+2. **控制台是 GBK**，脚本里有 `⇒`/`×` 会 `UnicodeEncodeError` ⇒ 先设
+   `$env:PYTHONIOENCODING='utf-8'; $env:PYTHONUTF8='1'`。
