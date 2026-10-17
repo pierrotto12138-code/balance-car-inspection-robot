@@ -376,9 +376,16 @@ export_step(top, os.path.join(OUT, "A2-02_上壳.step"))
 export_stl(top, os.path.join(OUT, "A2-02_上壳.stl"))
 
 # ============================ ③ 装配体 STEP ============================
-asm = fuse(bottom, top)
-export_step(asm, os.path.join(OUT, "A2-00_外壳装配.step"))
-print(f"③ 装配体：体积 {vol(asm)/1000:.2f} cm³（不含板）")
+# ★ 2026-10-17 更正：旧版这里用 `fuse(bottom, top)` —— 那是把上下壳**布尔并成一个实体**，
+#   文件里只有 1 个 MANIFOLD_SOLID_BREP，"装配体/2 实体"名不副实，爆炸图与装配图都没法用。
+#   现在写成**真装配**（两个组件 + 装配树），见 tools/step_assembly.py。
+from step_assembly import write_assembly, describe
+
+asm_path = os.path.join(OUT, "A2-00_外壳装配.step")
+write_assembly([("lower_shell", bottom, (0.55, 0.72, 0.87)),
+                ("upper_shell", top, (0.80, 0.86, 0.65))], asm_path, doc_name="shell_assembly")
+print("③ 装配体：下壳 + 上壳（2 个组件，含装配树，不含板）")
+describe(asm_path)
 print(f"④ 空间：板面向上 {TOP_H:.1f} mm（上壳内腔）；壳底到车底盘 {STANDOFF_H:.1f} mm M3 铜柱；"
       f"J5 超声波左右 {US_CLEAR_X:.0f} / 前后 {US_CLEAR_Y:.0f} mm；OLED 预留区 {OLED_RESERVED}")
 

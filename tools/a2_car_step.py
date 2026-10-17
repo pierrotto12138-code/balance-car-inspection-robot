@@ -198,31 +198,23 @@ base = "轻量" if LIGHT else "完整"
 out = os.path.join(OUT, f"A2-10_整车_装配_{base}.step")
 
 if XCAF:
-    from OCP.TDocStd import TDocStd_Document
-    from OCP.TCollection import TCollection_ExtendedString
-    from OCP.XCAFDoc import XCAFDoc_DocumentTool, XCAFDoc_ColorGen
-    from OCP.TDataStd import TDataStd_Name
-    from OCP.Quantity import Quantity_Color, Quantity_TOC_RGB
-    from OCP.STEPCAFControl import STEPCAFControl_Writer
-    from OCP.STEPControl import STEPControl_AsIs as _AsIs
-    doc = TDocStd_Document(TCollection_ExtendedString("MDTV-XCAF"))
-    _main = doc.Main()                        # ★ OCP 里 ShapeTool_s 要传 doc.Main()（TDF_Label）
-    st = XCAFDoc_DocumentTool.ShapeTool_s(_main)
-    ct = XCAFDoc_DocumentTool.ColorTool_s(_main)
+    # ★ 2026-10-17 更正：旧版逐个 `st.AddShape(shape, False)` 只是 14 个**自由件**，
+    #   文件里 NAUO = 0 ⇒ 根本没有装配树（"装配"名不副实）。改用 tools/step_assembly.py
+    #   的"复合体 → makeAssembly → 逐组件命名"路线，实测 NAUO = 件数。
+    from step_assembly import describe, write_assembly
+
+    named = []
     _cnt = {}
     for name, shape, rgb in parts:
         base = ascii_name(name)
         _cnt[base] = _cnt.get(base, 0) + 1
         idx = _cnt[base]
         nm = f"{base}_{idx}" if idx > 1 or base in ("motor", "wheel", "standoff") else base
-        lab = st.AddShape(shape, False)
-        TDataStd_Name.Set_s(lab, TCollection_ExtendedString(nm))
-        ct.SetColor(lab, Quantity_Color(rgb[0], rgb[1], rgb[2], Quantity_TOC_RGB), XCAFDoc_ColorGen)
-    w = STEPCAFControl_Writer()
-    w.SetNameMode(True); w.SetColorMode(True); w.SetLayerMode(True)
-    w.Transfer(doc, _AsIs)
-    ok = w.Write(out)
-    print(f"\n装配 STEP（XCAF 带名字/颜色）：{os.path.basename(out)}  写出={'OK' if ok else ok}  件数 {len(parts)}")
+        named.append((nm, shape, rgb))
+
+    ok = write_assembly(named, out, doc_name="a2_car")
+    print(f"\n装配 STEP（XCAF 带装配树/名字/颜色）：{os.path.basename(out)}  写出={ok}  件数 {len(named)}")
+    describe(out)
 else:
     from OCP.BRep import BRep_Builder
     from OCP.TopoDS import TopoDS_Compound

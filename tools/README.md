@@ -193,6 +193,7 @@ var all = await eda.sch_PrimitiveAttribute.getAll();             // 用它确认
 | `a2_print_coupon.py` | **★ 孔位试印件**：只打"下壳底板段 + 3 安装柱 + 4 外凸耳"（≈20 cm³），30 min 打完就能验孔位/铜柱/M3 自攻 → **不拿整壳去赌** | **打整壳之前必打** |
 | `a2_car_assembly.py` | 整车装配（网格）：底盘 + 两轮 + 电机 + 电池 + 铜柱 | 出整车视图/爆炸图 |
 | `a2_car_step.py` | 整车导出 STEP：默认复合体 / `--light` 轻量 / `--xcaf` 带零件名与颜色的**装配树**（云 CAD / SolidWorks 可看树）| 交给评审/在 CAD 里打开 |
+| `step_assembly.py` | **★ 写"真装配"STEP**：复合体 → `AddShape(…, makeAssembly=True)` → 逐组件 `GetReferredShape` 命名，才会写出 `NEXT_ASSEMBLY_USAGE_OCCURRENCE`。自带 `selftest`（写两盒子 → 按文本数 PRODUCT/NAUO/BREP 断言）| 任何要出装配树的地方；**别再用 `AddShape(shape, False)`**（那是自由件，NAUO=0，见 §8）|
 | `a2_explode.py` | 爆炸图 + 明细栏（含序号引出） | 交付图纸 |
 | `step_intake.py` | **外来 STEP/IGES 一条命令体检**：件数/尺寸/水密/孔位 + 与"我们的口径"对照 | 拿到厂商或往届模型时先跑它 |
 | `ref_parts_scan.py` | 参考件批量体检（先缓存 STL 再分析，避免反复解析大 STEP）| 拿来一堆外来件时 |
@@ -205,3 +206,33 @@ var all = await eda.sch_PrimitiveAttribute.getAll();             // 用它确认
    `C:\Users\<你>\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe`
 2. **控制台是 GBK**，脚本里有 `⇒`/`×` 会 `UnicodeEncodeError` ⇒ 先设
    `$env:PYTHONIOENCODING='utf-8'; $env:PYTHONUTF8='1'`。
+
+## 8. 两个"名不副实"的坑（A2，2026-10-17 实测）
+
+### 8.1 "装配" STEP 其实没有装配树
+
+用 OCC 写装配时，`XCAFDoc_ShapeTool.AddShape(shape, False)` 只是把件加成**自由件**：
+文件里 N 个 `PRODUCT` 各自独立、`NEXT_ASSEMBLY_USAGE_OCCURRENCE`(NAUO) = **0**
+⇒ SolidWorks / 云 CAD 打开**看不到装配树**，也没法逐件选。
+
+另一种直觉写法（`NewShape()` 空装配 + `AddComponent`）在这版 OCC 上更糟：
+`PRODUCT=1 / NAUO=0 / MANIFOLD_SOLID_BREP=0`，**几何根本没写出去**。
+
+**可行**：复合体 → `AddShape(comp, makeAssembly=True)` → 对每个组件 `GetReferredShape`
+拿到被引用件标签再命名（名字要设在**被引用件**上，设在组件标签上不生效）。见 `tools/step_assembly.py`。
+
+**顺带**：`A2-00_外壳装配.step` 旧版是 `fuse(下壳, 上壳)` —— 布尔并成**一个实体**，
+"2 实体"是错的（文件里 1 个 `MANIFOLD_SOLID_BREP`）。
+
+### 8.2 判据：数文本，不看"导出成功"
+
+`STEPControl_Writer.Write()` 返回 `RetDone` **只说明文件写完了**，不说明结构对。
+要按 STEP 文本数 `PRODUCT(` / `NEXT_ASSEMBLY_USAGE_OCCURRENCE` / `MANIFOLD_SOLID_BREP`，
+并断言"`PRODUCT` = 件数+1、`NAUO` = 件数"。`step_assembly.describe()` 就是干这个的。
+
+### 8.3 本机 SolidWorks 2026 打不开任何 STEP（待人工确认）
+
+2026-10-17 用 `mcp__solidworks__*` 实测：连 40×30×10 的长方体 STEP 都报
+`OpenDoc6 errors=2097152`（`swFileRequiresRepairError`），AP203/AP214、`.step`/`.stp`、
+中文路径/纯 ASCII 路径**全都一样**；而 **STL 能正常打开** ⇒ 不是文件问题，是这台机器的
+STEP 导入器。**结论**：自动化里别假设 STEP 可导入，先在 GUI 里手开一次定位。
