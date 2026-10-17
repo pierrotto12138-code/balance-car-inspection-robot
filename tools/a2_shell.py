@@ -46,17 +46,26 @@ ABOVE_MAX = 13.00            # 板面最高器件（PCB2 3D STEP：J17 电源座
 GAP_BELOW, GAP_ABOVE = 1.0, 1.0
 STAND_D, HOLE_D = 7.0, 3.2   # 安装柱外径 / 板上通孔
 STAND_H = BELOW_MAX + GAP_BELOW
-TOP_H = 22.0                 # 上壳内腔高（★ 控制板叠层实测后改）
+TOP_H = 36.5                 # 上壳内腔高（顶面加强筋 1.5 ⇒ 筋下净高恰为 35.0，满足"处处 ≥35")
 LIP = 2.0                    # 下壳上沿高出板面
 
 # 上下壳固定：**四角外凸耳**（腔内没有空间放 Φ7 柱 —— 板的 R5 圆角会干涉）
-BOSS_D, BOSS_PILOT = 7.0, 2.7      # 凸耳外径 / M3 自攻预孔
+BOSS_D, BOSS_PILOT = 7.0, 3.2      # 凸耳外径 / M3 通孔（走铜柱或螺钉）
 SCREW_HOLE_TOP = 3.4               # 上壳对应通孔
 BOSS_TAB_IN = 1.7                  # 凸耳中心自角点**向内**偏移（=Φ7 与板 R5 圆角外切且嵌进壳壁）
 
 # 加强筋
 RIB_T, RIB_H = 1.2, 1.5            # 筋厚 / 筋高
 N_RIB_X, N_RIB_Y = 2, 1            # 下壳底面 纵/横 筋条数（0 = 不加）
+
+# 壳底 → 车底盘：M3 铜柱高度（要求 25 mm）
+STANDOFF_H = 25.0
+
+# 超声波模块净空要求（J5）：左右 20 mm × 前后 15 mm
+US_CLEAR_X, US_CLEAR_Y = 20.0, 15.0
+
+# 控制板 J1/J2 之间上半部分 —— 给 OLED 预留（板坐标矩形 x0,y0,x1,y1）
+OLED_RESERVED = (48.0, 29.0, 96.0, 65.0)
 
 # 走线孔
 WIRE_HOLE_D = 8.0
@@ -78,8 +87,7 @@ HOLE_EXTRA = (94.00, 58.91)
 # 立墙开孔（板坐标；顶高默认值，实际按 PCB 3D 里器件真实高度自动覆盖）
 OPENINGS = [
     ("L",  6.00, 30.71, 11.0, 9.0,  "J17 12V 电源输入座"),
-    ("T", 19.97, 60.97, 18.0, 9.0,  "CN1 电机A(6P)"),
-    ("T", 38.00, 60.97, 18.0, 9.0,  "CN2 电机B(6P)"),
+    # CN1/CN2（电机 6P）不在顶墙开口：电机线在腔内走线，经底面 Φ8 走线孔出去
     ("T", 53.50, 61.96, 17.0, 11.0, "J5 超声波(4P)"),
     ("T", 80.70, 57.13, 14.0, 10.0, "J10 MQ-135(4P)"),
     ("T", 94.91, 57.59, 14.0, 10.0, "J13 MQ-2(4P)"),
@@ -239,7 +247,7 @@ CORNERS = [(BOSS_TAB_IN, BOSS_TAB_IN),
            (BOSS_TAB_IN, H - BOSS_TAB_IN),
            (W - BOSS_TAB_IN, H - BOSS_TAB_IN)]
 bottom = fuse(bottom, *[cyl(x, y, z_floor_top, BOSS_D / 2, STAND_H + BOARD_T + LIP) for x, y in CORNERS])
-bottom = cut(bottom, *[cyl(x, y, z_bottom - 1, BOSS_PILOT / 2, STAND_H + FLOOR + BOARD_T + LIP + 2) for x, y in CORNERS])
+bottom = cut(bottom, *[cyl(x, y, z_bottom - 1, BOSS_PILOT / 2, STAND_H + FLOOR + BOARD_T + LIP + 2) for x, y in CORNERS])  # Φ3.2 贯通，供 M3 铜柱
 feat["四角外凸耳"] = {"壳坐标": CORNERS, "外径": BOSS_D, "M3预孔": BOSS_PILOT, "顶面z": round(z_rim, 2)}
 
 # ★ v2② 底面加强筋
@@ -254,7 +262,12 @@ for k in range(N_RIB_Y):
     ribs.append(box(x0i, y - RIB_T / 2, z_floor_top, x1i, y + RIB_T / 2, z_floor_top + RIB_H))
 if ribs:
     bottom = fuse(bottom, *ribs)
-feat["加强筋"] = {"纵向": N_RIB_X, "横向": N_RIB_Y, "厚": RIB_T, "高": RIB_H}
+    # ④ 控制板 J1/J2 之间的上半部分给 OLED 预留：该矩形内不放筋
+    ox0, oy0, ox1, oy1 = OLED_RESERVED
+    bottom = cut(bottom, box(OX + ox0, OY + oy0, z_floor_top - 1,
+                             OX + ox1, OY + oy1, z_floor_top + RIB_H + 1))
+feat["加强筋"] = {"纵向": N_RIB_X, "横向": N_RIB_Y, "厚": RIB_T, "高": RIB_H,
+                  "OLED预留区(板坐标)": OLED_RESERVED}
 
 # ★ v2③ 走线孔
 bottom = cut(bottom, cyl(OX + WIRE_HOLE_AT[0], OY + WIRE_HOLE_AT[1], z_bottom - 1,
@@ -267,6 +280,12 @@ for side, cx, cy, w, h, note in OPENINGS:
     X, Y = OX + cx, OY + cy
     h = opening_top(cx, cy, default=h)
     ops.append({"座": note, "边": side, "板坐标": [cx, cy], "宽": w, "顶高": h})
+    if "超声波" in note:
+        # 超声波：在顶墙开**口袋**（左右 US_CLEAR_X 宽、前后 US_CLEAR_Y 深、从唇边顶到腔底）
+        c = box(X - US_CLEAR_X / 2, H - MARGIN - WALL - US_CLEAR_Y, z_floor_top,
+                X + US_CLEAR_X / 2, H + 1, z_rim + 1)
+        bottom = cut(bottom, c)
+        continue
     if side == "L":
         c = box(-1, Y - w / 2, z_floor_top, MARGIN + WALL + 0.5, Y + w / 2, z_floor_top + h)
     elif side == "R":
@@ -325,6 +344,13 @@ for k in range(N_RIB_Y):
     tribs.append(box(WALL, y - RIB_T / 2, zt - RIB_H, W - WALL, y + RIB_T / 2, zt))
 if tribs:
     top = fuse(top, *tribs)
+# ③ 上壳在超声波位置开同宽让位槽（模块本体 20×15 要穿过整个壳高）
+US_X = OX + 53.50
+top = cut(top, box(US_X - US_CLEAR_X / 2, H - MARGIN - WALL - US_CLEAR_Y, z0 - 1,
+                   US_X + US_CLEAR_X / 2, H + 1, z1 + 1))
+feat["超声波口袋"] = {"座": "J5 (53.50, 61.96)", "左右净空": US_CLEAR_X,
+                       "前后净空": US_CLEAR_Y, "上下壳同尺寸开口": True}
+
 # ★ v2④ 顶部通气栅格（传感器正上方）
 tg = []
 for (cx, cy) in TOP_GRILLE_AT:
@@ -353,9 +379,12 @@ export_stl(top, os.path.join(OUT, "A2-02_上壳.stl"))
 asm = fuse(bottom, top)
 export_step(asm, os.path.join(OUT, "A2-00_外壳装配.step"))
 print(f"③ 装配体：体积 {vol(asm)/1000:.2f} cm³（不含板）")
+print(f"④ 空间：板面向上 {TOP_H:.1f} mm（上壳内腔）；壳底到车底盘 {STANDOFF_H:.1f} mm M3 铜柱；"
+      f"J5 超声波左右 {US_CLEAR_X:.0f} / 前后 {US_CLEAR_Y:.0f} mm；OLED 预留区 {OLED_RESERVED}")
 
 json.dump(feat, open(os.path.join(OUT, "外壳_特征参数.json"), "w", encoding="utf-8"),
           ensure_ascii=False, indent=2)
 print(f"\n特征参数 → 外壳_特征参数.json")
+
 
 

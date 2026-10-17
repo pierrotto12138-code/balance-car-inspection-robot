@@ -269,7 +269,9 @@ def cmd_drawing(a):
     F = lambda s, b=False: ImageFont.truetype(r"C:\Windows\Fonts\simhei.ttf" if b else r"C:\Windows\Fonts\simsun.ttc", s)
     im = Image.new("RGB", (W, H), "white"); d = ImageDraw.Draw(im)
     d.rectangle([24, 24, W-24, H-24], outline="#111", width=3)
-    d.text((48, 40), f"零件图（自动生成）　{os.path.basename(a.file)}", font=F(34, True), fill="#111")
+    stem = os.path.splitext(os.path.basename(a.file))[0]
+    code = stem.split("_")[0] if stem.upper().startswith("A2-") else "A2-XX"
+    d.text((48, 40), f"零件图　{stem}", font=F(34, True), fill="#111")
     d.text((48, 86), f"外形 {size[0]:.2f} × {size[1]:.2f} × {size[2]:.2f} mm　体积 {m.volume/1000:.2f} cm³　"
                      f"水密 {m.is_watertight}", font=F(24), fill="#333")
     # 三个视图，按比例摆放
@@ -296,8 +298,8 @@ def cmd_drawing(a):
     # 标题栏
     tb = [1140, 1560, W-40, H-40]
     d.rectangle(tb, outline="#111", width=2)
-    rows = [("名称", os.path.splitext(os.path.basename(a.file))[0][:26]), ("材料", "PLA / PETG（按设计）"),
-            ("比例", "见图"), ("单位", "mm"), ("设计", "A2（结构）"), ("日期", "2026-10-16")]
+    rows = [("图号", code), ("名称", stem[:26]), ("材料", "PETG（3D 打印）"),
+            ("比例", "见图"), ("单位", "mm"), ("设计", "A2（结构）"), ("日期", "2026-10-17")]
     rh = (tb[3]-tb[1])/len(rows)
     for i, (k, v) in enumerate(rows):
         y = tb[1] + i*rh
