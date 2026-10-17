@@ -39,7 +39,7 @@ Z_CHASSIS_TOP = Z_BOTTOM - STANDOFF_H                            # -33.6
 CHASSIS_T = 4.0
 WHEEL_D, WHEEL_W = 67.0, 26.0
 Z_WHEEL = Z_CHASSIS_TOP - CHASSIS_T / 2                          # 轮心 ≈ 底盘板中面
-CHASSIS_L, CHASSIS_Wd = 176.0, 80.0
+CHASSIS_L, CHASSIS_Wd = 150.0, 76.0        # X 前后 / Y 左右（夹在两轮之间）
 CX, CY = OX + 100 / 2, OY + 65 / 2                               # 板中心（壳坐标）
 
 # ---------------- OCP → trimesh
@@ -84,40 +84,40 @@ for i in range(5):
     x = CX - CHASSIS_L / 2 + 20 + i * 30
     for y in (CY - 22, CY + 22):
         chassis = cylcut(chassis, x, y, Z_CHASSIS_TOP - CHASSIS_T - 1, 6.0, CHASSIS_T + 2)
-# 电机座耳（两侧）
-for sx in (-1, 1):
-    x0 = CX + sx * (CHASSIS_L / 2 - 34)
+# 电机安装凸台（左右两侧，靠近轮子）
+for sy in (-1, 1):
+    yc = CY + sy * (CHASSIS_Wd / 2 - 10)
     chassis = BRepAlgoAPI_Fuse(chassis, BRepPrimAPI_MakeBox(
-        gp_Pnt(x0 - 12, CY - 18, Z_CHASSIS_TOP), gp_Pnt(x0 + 12, CY + 18, Z_CHASSIS_TOP + 12)).Shape()).Shape()
+        gp_Pnt(CX - 26, yc - 12, Z_CHASSIS_TOP), gp_Pnt(CX + 26, yc + 12, Z_CHASSIS_TOP + 6)).Shape()).Shape()
 chassis_m = to_mesh(chassis)
 print(f"底盘板：{np.round(chassis_m.bounds[1]-chassis_m.bounds[0],1)}  z {chassis_m.bounds[0][2]:.1f}~{chassis_m.bounds[1][2]:.1f}")
 
 # ---------------- ② 轮子（⌀67 × 26，带 6 个减重孔 + 轮毂）
-def make_wheel(cx):
-    w = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(cx, CY - WHEEL_W / 2, Z_WHEEL), gp_Dir(0, 1, 0)),
+def make_wheel(cx, yc):
+    w = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(cx, yc - WHEEL_W / 2, Z_WHEEL), gp_Dir(0, 1, 0)),
                                  WHEEL_D / 2, WHEEL_W)
     shp = w.Shape()
     # 轮毂凸台（同轴，略宽）
-    hub = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(cx, CY - (WHEEL_W + 8) / 2, Z_WHEEL), gp_Dir(0, 1, 0)),
+    hub = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(cx, yc - (WHEEL_W + 8) / 2, Z_WHEEL), gp_Dir(0, 1, 0)),
                                    9.0, WHEEL_W + 8)
     shp = BRepAlgoAPI_Fuse(shp, hub.Shape()).Shape()
     # 减重孔（沿 Y 打穿）
     for k in range(6):
         a = k * math.pi / 3
         hx = cx + 19 * math.cos(a); hz = Z_WHEEL + 19 * math.sin(a)
-        hole = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(hx, CY - 80, hz), gp_Dir(0, 1, 0)), 5.0, 200).Shape()
+        hole = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(hx, yc - 80, hz), gp_Dir(0, 1, 0)), 5.0, 200).Shape()
         shp = BRepAlgoAPI_Cut(shp, hole).Shape()
     # 中心轴孔
     shp = BRepAlgoAPI_Cut(shp, BRepPrimAPI_MakeCylinder(
-        gp_Ax2(gp_Pnt(cx, CY - 80, Z_WHEEL), gp_Dir(0, 1, 0)), 4.0, 200).Shape()).Shape()
+        gp_Ax2(gp_Pnt(cx, yc - 80, Z_WHEEL), gp_Dir(0, 1, 0)), 4.0, 200).Shape()).Shape()
     return to_mesh(shp, 0.12)
 
 
-XW = [(CX - CHASSIS_L / 2 + 16), (CX + CHASSIS_L / 2 - 16)]
-wheels = [make_wheel(x) for x in XW]
-for w, x in zip(wheels, XW):
+YW = [(-(WHEEL_W / 2) - 0.5), (H + WHEEL_W / 2 + 0.5)]     # 左、右轮的中心 y（贴在壳两侧外）
+wheels = [make_wheel(CX, yc) for yc in YW]
+for w, yc in zip(wheels, YW):
     b = w.bounds
-    print(f"轮子 @x={x:.1f}：Φ={b[1][1]-b[0][1]:.1f}（沿 Y 厚）、直径 {b[1][0]-b[0][0]:.1f} × {b[1][2]-b[0][2]:.1f}")
+    print(f"轮子 @y={yc:6.1f}：直径 {b[1][0]-b[0][0]:.1f} × {b[1][2]-b[0][2]:.1f}、宽 {b[1][1]-b[0][1]:.1f}")
 
 # ---------------- ③ M3 铜柱 ×4（25 mm，Φ6 六角柱的圆柱近似）
 stand = BRepAlgoAPI_Fuse(
@@ -156,19 +156,20 @@ for s in stands:
 if mot is not None:
     mb = mot.bounds
     mc = (mb[0] + mb[1]) / 2
-    for sx in (-1, 1):
+    for sy in (-1, 1):
         m2 = mot.copy()
         m2.apply_translation(-mc)                     # 中心到原点
-        # 电机轴线沿 Y（与轮轴同向），放在底盘板耳上、轮内侧
-        m2.apply_translation([CX + sx * (CHASSIS_L / 2 - 62), CY, Z_CHASSIS_TOP + 8])
+        # 电机轴线沿 Y（与轮轴同向），坐在底盘板的电机凸台上、轮内侧
+        yc = CY + sy * (CHASSIS_Wd / 2 - 10)
+        m2.apply_translation([CX, yc, Z_CHASSIS_TOP + 6 + (mb[1][2] - mb[0][2]) / 2])
         assemblies.append(("电机", m2))
-        print(f"  电机 @x≈{CX + sx*(CHASSIS_L/2-62):.1f} z≈{Z_CHASSIS_TOP+8:.1f}")
+        print(f"  电机 @y={yc:6.1f} z≈{Z_CHASSIS_TOP + 6:.1f}（轴线沿 Y）")
 
 if batt is not None:
     bb = batt.bounds
     bc = (bb[0] + bb[1]) / 2
     b2 = batt.copy(); b2.apply_translation(-bc)
-    b2.apply_translation([CX, CY - 26, Z_CHASSIS_TOP + 3 + (bb[1][2] - bb[0][2]) / 2])
+    b2.apply_translation([CX, CY, Z_CHASSIS_TOP + 3 + (bb[1][2] - bb[0][2]) / 2])
     assemblies.append(("电池", b2))
 
 # ---------------- ⑤ 我们的板 + 壳
