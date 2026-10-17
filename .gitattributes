@@ -12,6 +12,7 @@
 *.pdf   -text
 *.xlsx  -text
 *.zip   -text
+*.mp4   -text
 
 # 明确按文本处理的源码/文档（便于 diff 与 blame）
 *.c      text eol=lf
