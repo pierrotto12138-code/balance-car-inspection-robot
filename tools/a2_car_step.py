@@ -79,14 +79,40 @@ def bbox(shape):
     return (mn.X(), mn.Y(), mn.Z(), mx.X(), mx.Y(), mx.Z())
 
 
-parts = []      # (name, shape)
+parts = []      # (name, shape, (r,g,b))
+PALETTE = {"下壳": (0.55, 0.72, 0.87), "上壳": (0.80, 0.86, 0.65), "主控板": (0.25, 0.55, 0.35),
+           "电机": (0.35, 0.35, 0.38), "电池": (0.85, 0.55, 0.30), "底盘": (0.60, 0.60, 0.62),
+           "车轮": (0.22, 0.22, 0.24), "铜柱": (0.85, 0.68, 0.30), "控制板": (0.30, 0.45, 0.70)}
+
+
+NAME_MAP = {"下壳": "lower_shell", "上壳": "upper_shell",
+            "主控板": "pcb_board", "主控板(板框)": "pcb_board_outline",
+            "控制板叠层(包络)": "ctrl_board_env", "电池": "battery_pack",
+            "底盘板": "chassis_plate", "电机": "motor", "车轮": "wheel",
+            "铜柱": "standoff", "控制板": "ctrl_board"}
+
+
+def ascii_name(name):
+    if name in NAME_MAP:
+        return NAME_MAP[name]
+    for k, v in NAME_MAP.items():
+        if name.startswith(k):
+            return v
+    return "".join(ch if (ch.isascii() and ch.isalnum()) else "_" for ch in name).strip("_") or "part"
+
+
+def color_of(name):
+    for k, v in PALETTE.items():
+        if name.startswith(k):
+            return v
+    return (0.7, 0.7, 0.7)
 
 # ① 本组外壳
 for nm, fn in (("下壳", "A2-01_下壳.step"), ("上壳", "A2-02_上壳.step")):
     p = os.path.join(OUT, fn)
     if os.path.exists(p):
         s = read_step(p)
-        parts.append((nm, s))
+        parts.append((nm, s, color_of(nm)))
         print(f"  + {nm:<8} 实体 {count_solids(s):2d}  {np.round(np.array(bbox(s))[3:] - np.array(bbox(s))[:3], 1)}")
 
 # ② 本组主控板（STEP 坐标 → 壳坐标：平移 (5.4+6.0, 5.4+58.91)）
@@ -94,14 +120,14 @@ LIGHT = "--light" in sys.argv
 if LIGHT:
     # 轻量：板框实体（100×65×1.6）+ 控制板叠层包络盒
     b1 = BRepPrimAPI_MakeBox(gp_Pnt(OX, OY, 0), gp_Pnt(OX + 100, OY + 65, 1.6)).Shape()
-    parts.append(("主控板(板框)", b1))
+    parts.append(("主控板(板框)", b1, color_of("主控板")))
     b2 = BRepPrimAPI_MakeBox(gp_Pnt(OX, OY, 13.3), gp_Pnt(OX + 100, OY + 65, 24.9)).Shape()
-    parts.append(("控制板叠层(包络)", b2))
+    parts.append(("控制板叠层(包络)", b2, color_of("控制板")))
     print(f"  + 主控板   轻量模式：板框实体 + 叠层包络盒（不含 149 个器件）")
 elif os.path.exists(STEP_PCB):
     s = read_step(STEP_PCB)
     s = xform(s, trsf_t(OX + 6.00, OY + 58.91, 0))
-    parts.append(("主控板", s))
+    parts.append(("主控板", s, color_of("主控板")))
     print(f"  + 主控板   实体 {count_solids(s):2d}  {np.round(np.array(bbox(s))[3:] - np.array(bbox(s))[:3], 1)}")
 
 # ③ 参考件：电机 ×2（轴沿 X）、电池 ×1（绕 Z 90°，沿 Y 摆）
@@ -118,14 +144,14 @@ if mot is not None:
     for k, sx in enumerate((-1, 1)):
         xc = CX + sx * (CHASSIS_L / 2 - 16)
         s = xform(base, trsf_t(xc, CY, Z_CHASSIS_TOP + 6 + (mx[2] - mn[2]) / 2))
-        parts.append((f"电机{k+1}", s))
+        parts.append((f"电机{k+1}", s, color_of("电机")))
     print(f"  + 电机 ×2  实体 {count_solids(parts[-1][1]):2d}")
 
 # 电池：参考件是曲面（0 实体），按包络 94.5×28.5×13.2 建实体盒（长边沿 Y = 前进方向）
 BAT = (28.5, 94.5, 13.2)          # X, Y, Z
 s = BRepPrimAPI_MakeBox(gp_Pnt(CX - BAT[0] / 2, CY - BAT[1] / 2, Z_CHASSIS_TOP + 3),
                         gp_Pnt(CX + BAT[0] / 2, CY + BAT[1] / 2, Z_CHASSIS_TOP + 3 + BAT[2])).Shape()
-parts.append(("电池", s))
+parts.append(("电池", s, color_of("电池")))
 print(f"  + 电池     实体 {count_solids(s):2d}（按包络 94.5×28.5×13.2 建实体盒）")
 
 # ④ 参数化件：底盘板 / 车轮 / 铜柱
@@ -140,7 +166,7 @@ for sx in (-1, 1):
     xc = CX + sx * (CHASSIS_L / 2 - 14)
     chassis = BRepAlgoAPI_Fuse(chassis, BRepPrimAPI_MakeBox(
         gp_Pnt(xc - 14, CY - 26, Z_CHASSIS_TOP), gp_Pnt(xc + 14, CY + 26, Z_CHASSIS_TOP + 6)).Shape()).Shape()
-parts.append(("底盘板", chassis))
+parts.append(("底盘板", chassis, color_of("底盘")))
 print(f"  + 底盘板   实体 {count_solids(chassis):2d}")
 
 for k, xc in enumerate((-(WHEEL_W / 2) - 0.5, W + WHEEL_W / 2 + 0.5)):
@@ -156,35 +182,67 @@ for k, xc in enumerate((-(WHEEL_W / 2) - 0.5, W + WHEEL_W / 2 + 0.5)):
             gp_Ax2(gp_Pnt(xc - 80, hy, hz), gp_Dir(1, 0, 0)), 5.0, 200).Shape()).Shape()
     w = BRepAlgoAPI_Cut(w, BRepPrimAPI_MakeCylinder(
         gp_Ax2(gp_Pnt(xc - 80, CY, Z_WHEEL), gp_Dir(1, 0, 0)), 4.0, 200).Shape()).Shape()
-    parts.append((f"车轮{k+1}", w))
+    parts.append((f"车轮{k+1}", w, color_of("车轮")))
 print(f"  + 车轮 ×2  实体 {count_solids(parts[-1][1]):2d}")
 
 for k, (x, y) in enumerate([(1.7, 1.7), (W - 1.7, 1.7), (1.7, H - 1.7), (W - 1.7, H - 1.7)]):
     s = BRepAlgoAPI_Fuse(
         BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(x, y, Z_CHASSIS_TOP), gp_Dir(0, 0, 1)), 3.0, STANDOFF_H).Shape(),
         BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(x, y, Z_CHASSIS_TOP), gp_Dir(0, 0, 1)), 5.5, 3.0).Shape()).Shape()
-    parts.append((f"铜柱{k+1}", s))
+    parts.append((f"铜柱{k+1}", s, color_of("铜柱")))
 print(f"  + 铜柱 ×4")
 
 # ---- 合成一个 shape 并写 STEP（尽量用 XCAF 带名字）
-from OCP.BRep import BRep_Builder
-from OCP.TopoDS import TopoDS_Compound
-builder = BRep_Builder()
-comp = TopoDS_Compound()
-builder.MakeCompound(comp)
-for _, s in parts:
-    builder.Add(comp, s)
+XCAF = "--xcaf" in sys.argv
+base = "轻量" if LIGHT else "完整"
+out = os.path.join(OUT, f"A2-10_整车_装配_{base}.step")
 
-out = os.path.join(OUT, "A2-10_整车_轻量.step" if LIGHT else "A2-10_整车.step")
-w = STEPControl_Writer()
-w.Transfer(comp, STEPControl_AsIs)
-st = w.Write(out)
-b = bbox(comp)
-print(f"\n整车 STEP：{os.path.basename(out)}")
-print(f"  写出状态 {'OK' if str(st).endswith('RetDone') else st}　实体 {count_solids(comp)} 个")
-print(f"  包络 {b[3]-b[0]:.2f} × {b[4]-b[1]:.2f} × {b[5]-b[2]:.2f} mm"
-      f"（X {b[0]:.1f}~{b[3]:.1f}  Y {b[1]:.1f}~{b[4]:.1f}  Z {b[2]:.1f}~{b[5]:.1f}）")
-print(f"  文件 {os.path.getsize(out)/1024/1024:.1f} MB")
+if XCAF:
+    from OCP.TDocStd import TDocStd_Document
+    from OCP.TCollection import TCollection_ExtendedString
+    from OCP.XCAFDoc import XCAFDoc_DocumentTool, XCAFDoc_ColorGen
+    from OCP.TDataStd import TDataStd_Name
+    from OCP.Quantity import Quantity_Color, Quantity_TOC_RGB
+    from OCP.STEPCAFControl import STEPCAFControl_Writer
+    from OCP.STEPControl import STEPControl_AsIs as _AsIs
+    doc = TDocStd_Document(TCollection_ExtendedString("MDTV-XCAF"))
+    _main = doc.Main()                        # ★ OCP 里 ShapeTool_s 要传 doc.Main()（TDF_Label）
+    st = XCAFDoc_DocumentTool.ShapeTool_s(_main)
+    ct = XCAFDoc_DocumentTool.ColorTool_s(_main)
+    _cnt = {}
+    for name, shape, rgb in parts:
+        base = ascii_name(name)
+        _cnt[base] = _cnt.get(base, 0) + 1
+        idx = _cnt[base]
+        nm = f"{base}_{idx}" if idx > 1 or base in ("motor", "wheel", "standoff") else base
+        lab = st.AddShape(shape, False)
+        TDataStd_Name.Set_s(lab, TCollection_ExtendedString(nm))
+        ct.SetColor(lab, Quantity_Color(rgb[0], rgb[1], rgb[2], Quantity_TOC_RGB), XCAFDoc_ColorGen)
+    w = STEPCAFControl_Writer()
+    w.SetNameMode(True); w.SetColorMode(True); w.SetLayerMode(True)
+    w.Transfer(doc, _AsIs)
+    ok = w.Write(out)
+    print(f"\n装配 STEP（XCAF 带名字/颜色）：{os.path.basename(out)}  写出={'OK' if ok else ok}  件数 {len(parts)}")
+else:
+    from OCP.BRep import BRep_Builder
+    from OCP.TopoDS import TopoDS_Compound
+    builder = BRep_Builder()
+    comp = TopoDS_Compound()
+    builder.MakeCompound(comp)
+    for _, s, *rest in parts:
+        builder.Add(comp, s)
+    w = STEPControl_Writer()
+    w.Transfer(comp, STEPControl_AsIs)
+    ok = w.Write(out)
+    b = bbox(comp)
+    print(f"\n整车 STEP（复合体，无名字）：{os.path.basename(out)}  实体 {count_solids(comp)} 个  "
+          f"包络 {b[3]-b[0]:.2f} × {b[4]-b[1]:.2f} × {b[5]-b[2]:.2f} mm")
 
-
-
+print(f"  文件 {os.path.getsize(out)/1024/1024:.2f} MB")
+if XCAF:
+    print("  零件名（STEP 内为 ASCII，中文对照）：")
+    _c2 = {}
+    for nm, _, _ in parts:
+        base = ascii_name(nm); _c2[base] = _c2.get(base, 0) + 1; idx = _c2[base]
+        shown = f"{base}_{idx}" if idx > 1 or base in ("motor", "wheel", "standoff") else base
+        print(f"    {shown:<22} ← {nm}")
