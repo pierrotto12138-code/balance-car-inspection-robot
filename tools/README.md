@@ -230,12 +230,21 @@ var all = await eda.sch_PrimitiveAttribute.getAll();             // 用它确认
 要按 STEP 文本数 `PRODUCT(` / `NEXT_ASSEMBLY_USAGE_OCCURRENCE` / `MANIFOLD_SOLID_BREP`，
 并断言"`PRODUCT` = 件数+1、`NAUO` = 件数"。`step_assembly.describe()` 就是干这个的。
 
-### 8.3 本机 SolidWorks 2026 打不开任何 STEP（待人工确认）
+### 8.3 `OpenDoc6` 打不开外来格式（`2097152`），但 GUI 双击正常
 
-2026-10-17 实测（当时通过 SolidWorks 的 COM/MCP 通道调）：连 40×30×10 的长方体 STEP 都报
-`OpenDoc6 errors=2097152`（`swFileRequiresRepairError`），AP203/AP214、`.step`/`.stp`、
-中文路径/纯 ASCII 路径**全都一样**；而 **STL 能正常打开** ⇒ 不是文件问题，是这台机器的
-STEP 导入器。**结论**：别假设"STEP 一定能在 SW 里打开"，先在 GUI 里手开一次定位。
+**别被这个错误码骗了**（本项目 2026-10-17 一整轮排查的结论）。
 
-> 那个 COM/MCP 通道（第三方 `dsh-solidworks`）当天就卸载了（不符合 DSH 插件规范，待重做）；
-> 结论仍然成立，因为它量的是 SolidWorks 本体，不是桥。
+- **自动化调用**：`ISldWorks::OpenDoc6(step/igs/stl/x_t/dxf, …)` 一律返回
+  `2097152 = swFileRequiresRepairError`（本机 `swconst.tlb` 解出来的），
+  连 40×30×10 的长方体、**SolidWorks 自己导出的** STEP 也一样；换 `swDocIMPORTED_PART`、
+  `Silent|ReadOnly`、`CommandInProgress`、关 3D Interconnect、重置导入设置、改
+  `Stringent Check and Repair` —— 全都不变。
+- **GUI**：同一个文件**双击就开**（`文件→打开` 同理），打开后是 `xxx.step.SLDASM/.SLDPRT`
+  的 **3D Interconnect 链接**文档。实测 `A2-00_外壳装配.step` → 2 组件、
+  `A2-10_整车_装配_轻量.step` → 14 个命名件，装配树完全正确。
+- 原因：SW 2026 对外来格式走 3D Interconnect 的内部路径，`OpenDoc6` 这条 API 对链接文档
+  只回"需要修复"。
+
+**结论**：① 判"文件能不能用"**必须用 GUI 双击验**，别用 `OpenDoc6` 的返回值；
+② 要自动化开 STEP，别指望 `OpenDoc6`（这版 `ISldWorks` 也没有 `LoadFile4`）；
+③ 链接文档要编辑/交付，先**根节点右键 → 断开链接**。
