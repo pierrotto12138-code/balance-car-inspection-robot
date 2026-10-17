@@ -45,3 +45,12 @@ hardware/eda_export_20261016/*.epro2 -text
 hardware/eda_export_20261016/*.xlsx  -text
 hardware/gerber/*.zip  -text
 
+# A2 机械模型（SolidWorks / STEP / STL）：一律按二进制，禁止行尾转换
+*.SLDASM -text
+*.SLDPRT -text
+*.SLDDRW -text
+*.step   -text
+*.stp    -text
+*.stl    -text
+*.3mf    -text
+
