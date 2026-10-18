@@ -273,3 +273,8 @@ python ..\tools\fw_prep\tune.py -p COM5 --save        # 存 Flash
 - **三个"看不见的正确性问题"已修**：`control.c` 缺 `app_config.h`（开关静默失效）、
   裸 `if` 未加花括号（转圈 + 停车保护被绕过）、启动期两段覆盖互相覆盖（速度环其实没跑）。
   详见 [`docs/design_firmware/真机联调问题清单.md`](../docs/design_firmware/真机联调问题清单.md) §8。
+---
+
+> **项目归属**：中国石油大学（华东） 专业生产实习课程项目<br>
+> **范围说明**：本项目不涉及 MiniBalance 控制板（STM32F405RGT6 版本）的硬件设计与改版；控制板直接沿用，A1 仅重做主底板。<br>
+> **许可**：原创代码与文档采用 MIT License；第三方组件遵循各自原始许可证。

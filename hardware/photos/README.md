@@ -65,3 +65,8 @@
 - 新版底板的 **Gerber**（含丝印层）在 [`../gerber/`](../gerber/)。
 - 新版底板的 **焊接与上板测试记录**在 [`../../docs/design_hardware/上板测试记录.md`](../../docs/design_hardware/上板测试记录.md)。
 - 底板渲染图（非照片）：[`../../docs/design_hardware/图/PCB2_最终.png`](../../docs/design_hardware/图/PCB2_最终.png)。
+---
+
+> **项目归属**：中国石油大学（华东） 专业生产实习课程项目<br>
+> **范围说明**：本项目不涉及 MiniBalance 控制板（STM32F405RGT6 版本）的硬件设计与改版；控制板直接沿用，A1 仅重做主底板。<br>
+> **许可**：原创代码与文档采用 MIT License；第三方组件遵循各自原始许可证。

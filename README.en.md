@@ -1,5 +1,9 @@
-# Warehouse Safety-Patrol Balancing Robot — Course Project (Group 1)
+# Warehouse Safety-Patrol Balancing Robot — Professional Production Internship Course Project (Group 1)
 
+> **China University of Petroleum (East China)** · Professional Production Internship Course Project
+>
+> [简体中文](README.md) · English
+>
 > **English summary.** The full documentation is in Chinese ([`README.md`](README.md),
 > [`docs/`](docs/)); this file exists so the repository is usable by anyone who does not read Chinese.
 
@@ -9,6 +13,10 @@ A course project for *Measurement & Control System Design*: a self-balancing two
 that patrols a warehouse floor, samples **gas (MQ-2 / MQ-135)** and **temperature/humidity (DHT11)**,
 judges whether readings cross thresholds, raises a local alarm, and reports state to a PC
 monitoring application. A 4-person team built it end to end:
+
+> **Scope:** this project does **not** redesign the MiniBalance control board (STM32F405RGT6
+> version). The control board is used as-is; only the baseboard is redesigned (schematic, PCB,
+> soldering and test).
 
 | Role | Scope | Where |
 |---|---|---|
@@ -106,3 +114,9 @@ python tools/fw_prep/tune.py -p COM5 --observe 20 --csv run1.csv   # 100 Hz scop
   (`Base/` is git-ignored); the firmware tree contains only what is needed to build.
 * Documents and code comments are in Chinese; identifiers and directory names are English.
 * Personal data (student IDs, names) has been deliberately kept out of this public repository.
+
+## License
+
+Original code and documentation in this repository are released under the **MIT License** (see
+[`LICENSE`](LICENSE)). Third-party components (STM32 StdPeriph/HAL, FreeRTOS, Qt, QCustomPlot,
+etc.) are **not** covered by this license and remain under their original licenses.

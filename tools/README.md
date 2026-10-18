@@ -248,3 +248,8 @@ var all = await eda.sch_PrimitiveAttribute.getAll();             // 用它确认
 **结论**：① 判"文件能不能用"**必须用 GUI 双击验**，别用 `OpenDoc6` 的返回值；
 ② 要自动化开 STEP，别指望 `OpenDoc6`（这版 `ISldWorks` 也没有 `LoadFile4`）；
 ③ 链接文档要编辑/交付，先**根节点右键 → 断开链接**。
+---
+
+> **项目归属**：中国石油大学（华东） 专业生产实习课程项目<br>
+> **范围说明**：本项目不涉及 MiniBalance 控制板（STM32F405RGT6 版本）的硬件设计与改版；控制板直接沿用，A1 仅重做主底板。<br>
+> **许可**：原创代码与文档采用 MIT License；第三方组件遵循各自原始许可证。
