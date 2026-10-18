@@ -248,6 +248,7 @@ var all = await eda.sch_PrimitiveAttribute.getAll();             // 用它确认
 **结论**：① 判"文件能不能用"**必须用 GUI 双击验**，别用 `OpenDoc6` 的返回值；
 ② 要自动化开 STEP，别指望 `OpenDoc6`（这版 `ISldWorks` 也没有 `LoadFile4`）；
 ③ 链接文档要编辑/交付，先**根节点右键 → 断开链接**。
+
 ---
 
 > **项目归属**：中国石油大学（华东） 专业生产实习课程项目<br>

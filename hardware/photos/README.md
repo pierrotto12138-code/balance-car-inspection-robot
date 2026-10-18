@@ -65,6 +65,7 @@
 - 新版底板的 **Gerber**（含丝印层）在 [`../gerber/`](../gerber/)。
 - 新版底板的 **焊接与上板测试记录**在 [`../../docs/design_hardware/上板测试记录.md`](../../docs/design_hardware/上板测试记录.md)。
 - 底板渲染图（非照片）：[`../../docs/design_hardware/图/PCB2_最终.png`](../../docs/design_hardware/图/PCB2_最终.png)。
+
 ---
 
 > **项目归属**：中国石油大学（华东） 专业生产实习课程项目<br>

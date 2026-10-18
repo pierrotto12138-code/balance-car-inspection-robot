@@ -273,6 +273,7 @@ python ..\tools\fw_prep\tune.py -p COM5 --save        # 存 Flash
 - **三个"看不见的正确性问题"已修**：`control.c` 缺 `app_config.h`（开关静默失效）、
   裸 `if` 未加花括号（转圈 + 停车保护被绕过）、启动期两段覆盖互相覆盖（速度环其实没跑）。
   详见 [`docs/design_firmware/真机联调问题清单.md`](../docs/design_firmware/真机联调问题清单.md) §8。
+
 ---
 
 > **项目归属**：中国石油大学（华东） 专业生产实习课程项目<br>
